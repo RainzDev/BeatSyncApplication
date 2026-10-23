@@ -158,10 +158,13 @@ public static class BeatmapHttpServer
                 .ToList();
         }
 
+        var source = MainViewModel.GetBeatmapSourceName(settings.SelectedBeatmapSource);
+
         return versionFolders
             .Select(versionFolder => new BeatmapVersion
             {
                 Name = Path.GetFileName(versionFolder) ?? "Unknown",
+                Source = source,
                 CustomLevels = GetCustomLevels(MainViewModel.GetBeatmapRootPath(versionFolder, settings.SelectedBeatmapSource)),
             })
             .Where(version => version.CustomLevels.Count > 0)
@@ -315,6 +318,7 @@ public static class BeatmapHttpServer
     private sealed class BeatmapVersion
     {
         public string Name { get; set; } = string.Empty;
+        public string Source { get; set; } = "CustomLevels";
         public List<CustomLevelFolder> CustomLevels { get; set; } = new();
     }
 
