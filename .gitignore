@@ -1,0 +1,33 @@
+# Build outputs
+bin/
+obj/
+artifacts/
+
+# Visual Studio / IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Logs and debug
+*.log
+*.tlog
+*.tmp
+*.cache
+
+# Compiled binaries / symbols
+*.pdb
+*.dll
+*.exe
+*.appx
+*.msix
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local app data (not repo files)
+appsettings.local.json

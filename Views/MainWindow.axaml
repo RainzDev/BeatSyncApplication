@@ -1,0 +1,87 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:BeatmapPorter.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        x:Class="BeatmapPorter.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="BeatmapPorter">
+
+    <Design.DataContext>
+        <vm:MainViewModel />
+    </Design.DataContext>
+
+    <StackPanel Margin="20" Spacing="12" Background="#2b2d31">
+        <TextBlock Text="BeatmapPorter Settings"
+                   FontSize="24"
+                   TextAlignment="Center"
+                   FontWeight="SemiBold"
+                   Foreground="#f2f3f5" />
+
+        <TextBox Text="{Binding SelectedFolder}"
+                 IsReadOnly="True"
+                 TextWrapping="Wrap"
+                 Background="#1e1f22"
+                 Foreground="#f2f3f5" />
+
+        <Button Content="Choose Folder"
+                Width="120"
+                HorizontalAlignment="Left"
+                Click="BrowseFolder_Click"
+                Background="#5865f2"
+                Foreground="#ffffff" />
+
+        <Border Height="8" Width="1" IsHitTestVisible="False" />
+
+        <TextBlock Text="{Binding CustomLevelsSizeText, StringFormat='Required Space: {0}'}"
+                   Foreground="#2ecc71"
+                   FontSize="16"
+                   FontWeight="SemiBold"
+                   HorizontalAlignment="Left" />
+
+        <StackPanel Orientation="Horizontal" Spacing="12">
+            <ComboBox ItemsSource="{Binding VersionOptions}"
+                      SelectedItem="{Binding SelectedVersion}"
+                      PlaceholderText="Select a Beat Saber version"
+                      Width="220"
+                      HorizontalAlignment="Left" />
+
+            <ComboBox ItemsSource="{Binding BeatmapSourceOptions}"
+                      SelectedItem="{Binding SelectedBeatmapSourceOption}"
+                      PlaceholderText="Select source"
+                      Width="200"
+                      HorizontalAlignment="Left"
+                      DisplayMemberBinding="{Binding Label}" />
+        </StackPanel>
+
+        <CheckBox Content="Enable Startup"
+                  IsChecked="{Binding EnableStartup}"
+                  Foreground="#f2f3f5" />
+
+        <StackPanel Spacing="8" Margin="0,14,0,0" HorizontalAlignment="Center">
+            <TextBlock Text="Network access"
+                       Foreground="#f2f3f5"
+                       FontWeight="SemiBold"
+                       FontSize="20"
+                       HorizontalAlignment="Center" />
+
+            <Border Background="#1e1f22"
+                    CornerRadius="14"
+                    Padding="18,12"
+                    BorderBrush="#40444b"
+                    BorderThickness="1"
+                    Width="360">
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="12">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="IP" Foreground="#b5bac1" FontWeight="SemiBold" FontSize="18" VerticalAlignment="Center" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding LocalAddress}" Foreground="#f2f3f5" FontSize="18" VerticalAlignment="Center" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Port" Foreground="#b5bac1" FontWeight="SemiBold" FontSize="18" VerticalAlignment="Center" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="5050" Foreground="#f2f3f5" FontSize="18" VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+
+        </StackPanel>
+    </StackPanel>
+</Window>
