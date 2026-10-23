@@ -130,10 +130,14 @@ public static class BeatmapHttpServer
 
     private static object GetBeatmaps()
     {
-        return new { versions = GetBeatmapVersions() };
+        var selectedVersion = GetSelectedBeatmapVersion();
+        return new BeatmapResponse
+        {
+            Version = selectedVersion,
+        };
     }
 
-    private static List<BeatmapVersion> GetBeatmapVersions()
+    private static BeatmapVersion? GetSelectedBeatmapVersion()
     {
         var settings = AppSettings.Load();
         var selectedFolder = !string.IsNullOrWhiteSpace(settings.SelectedFolder)
@@ -142,7 +146,7 @@ public static class BeatmapHttpServer
 
         if (string.IsNullOrWhiteSpace(selectedFolder) || !Directory.Exists(selectedFolder))
         {
-            return new List<BeatmapVersion>();
+            return null;
         }
 
         var selectedVersion = settings.SelectedVersion;
@@ -158,17 +162,21 @@ public static class BeatmapHttpServer
                 .ToList();
         }
 
-        var source = MainViewModel.GetBeatmapSourceName(settings.SelectedBeatmapSource);
+        var versionFolderPath = versionFolders.FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(versionFolderPath))
+        {
+            return null;
+        }
 
-        return versionFolders
-            .Select(versionFolder => new BeatmapVersion
-            {
-                Name = Path.GetFileName(versionFolder) ?? "Unknown",
-                Source = source,
-                CustomLevels = GetCustomLevels(MainViewModel.GetBeatmapRootPath(versionFolder, settings.SelectedBeatmapSource)),
-            })
-            .Where(version => version.CustomLevels.Count > 0)
-            .ToList();
+        var source = MainViewModel.GetBeatmapSourceName(settings.SelectedBeatmapSource);
+        var version = new BeatmapVersion
+        {
+            Name = Path.GetFileName(versionFolderPath) ?? "Unknown",
+            Source = source,
+            CustomLevels = GetCustomLevels(MainViewModel.GetBeatmapRootPath(versionFolderPath, settings.SelectedBeatmapSource)),
+        };
+
+        return version.CustomLevels.Count > 0 ? version : null;
     }
 
     private static List<CustomLevelFolder> GetCustomLevels(string customLevelsFolder)
@@ -194,7 +202,7 @@ public static class BeatmapHttpServer
 
     private static string BuildBeatmapHtml()
     {
-        var versions = GetBeatmapVersions();
+        var version = GetSelectedBeatmapVersion();
         var builder = new StringBuilder();
 
         builder.AppendLine("<!DOCTYPE html>");
@@ -216,7 +224,7 @@ public static class BeatmapHttpServer
         builder.AppendLine("<body>");
         builder.AppendLine("<h1>BeatmapPorter</h1>");
 
-        if (versions.Count == 0)
+        if (version is null)
         {
             builder.AppendLine("<p>No custom levels found for the selected Beat Saber folder.</p>");
             builder.AppendLine("</body>");
@@ -224,26 +232,23 @@ public static class BeatmapHttpServer
             return builder.ToString();
         }
 
-        foreach (var version in versions)
+        builder.AppendLine($"<h2>{WebUtility.HtmlEncode(version.Name)}</h2>");
+
+        foreach (var customLevel in version.CustomLevels)
         {
-            builder.AppendLine($"<h2>{WebUtility.HtmlEncode(version.Name)}</h2>");
+            var folderDownload = $"/api/beatmaps/download/{Uri.EscapeDataString(customLevel.Name)}";
+            builder.AppendLine("<div class=\"folder\">");
+            builder.AppendLine($"<strong><a href=\"{folderDownload}\">{WebUtility.HtmlEncode(customLevel.Name)}</a></strong>");
+            builder.AppendLine("<ul>");
 
-            foreach (var customLevel in version.CustomLevels)
+            foreach (var content in customLevel.Contents)
             {
-                var folderDownload = $"/api/beatmaps/download/{Uri.EscapeDataString(customLevel.Name)}";
-                builder.AppendLine("<div class=\"folder\">");
-                builder.AppendLine($"<strong><a href=\"{folderDownload}\">{WebUtility.HtmlEncode(customLevel.Name)}</a></strong>");
-                builder.AppendLine("<ul>");
-
-                foreach (var content in customLevel.Contents)
-                {
-                    var contentUrl = $"/api/beatmaps/download/{Uri.EscapeDataString(customLevel.Name)}/{Uri.EscapeDataString(content)}";
-                    builder.AppendLine($"<li><a href=\"{contentUrl}\">{WebUtility.HtmlEncode(content)}</a></li>");
-                }
-
-                builder.AppendLine("</ul>");
-                builder.AppendLine("</div>");
+                var contentUrl = $"/api/beatmaps/download/{Uri.EscapeDataString(customLevel.Name)}/{Uri.EscapeDataString(content)}";
+                builder.AppendLine($"<li><a href=\"{contentUrl}\">{WebUtility.HtmlEncode(content)}</a></li>");
             }
+
+            builder.AppendLine("</ul>");
+            builder.AppendLine("</div>");
         }
 
         builder.AppendLine("</body>");
@@ -313,6 +318,11 @@ public static class BeatmapHttpServer
         }
 
         return stream.ToArray();
+    }
+
+    private sealed class BeatmapResponse
+    {
+        public BeatmapVersion? Version { get; set; }
     }
 
     private sealed class BeatmapVersion
