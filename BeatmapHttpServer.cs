@@ -19,6 +19,8 @@ namespace BeatmapPorter;
 public static class BeatmapHttpServer
 {
     private static WebApplication? _app;
+    public static event Action<bool>? ServerStatusChanged;
+    public static bool IsRunning => _app is not null;
 
     public static void Start()
     {
@@ -86,6 +88,7 @@ public static class BeatmapHttpServer
         app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
         _app = app;
+        ServerStatusChanged?.Invoke(true);
 
         _ = Task.Run(async () =>
         {
@@ -110,6 +113,7 @@ public static class BeatmapHttpServer
         await _app.StopAsync();
         await _app.DisposeAsync();
         _app = null;
+        ServerStatusChanged?.Invoke(false);
     }
 
     public static string GetLocalAddress()
@@ -192,12 +196,24 @@ public static class BeatmapHttpServer
             {
                 Name = Path.GetFileName(folder) ?? "Unknown",
                 Contents = Directory.EnumerateFileSystemEntries(folder)
+                    .Where(entry => !ShouldHideEntryFromApi(entry))
                     .Select(entry => Path.GetFileName(entry) ?? "")
                     .Where(name => !string.IsNullOrWhiteSpace(name))
                     .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
                     .ToList(),
             })
             .ToList();
+    }
+
+    private static bool ShouldHideEntryFromApi(string path)
+    {
+        if (!Directory.Exists(path))
+        {
+            return false;
+        }
+
+        return Directory.EnumerateDirectories(path, "*", SearchOption.AllDirectories)
+            .Any(directory => string.Equals(Path.GetFileName(directory), "Assets", StringComparison.OrdinalIgnoreCase));
     }
 
     private static string BuildBeatmapHtml()

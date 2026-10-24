@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using Avalonia.Media;
 using BeatmapPorter.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -35,12 +36,19 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     private string customLevelsSizeText = "0 MB";
 
+    [ObservableProperty]
+    private bool serverRunning = BeatmapHttpServer.IsRunning;
+
+    [ObservableProperty]
+    private SolidColorBrush serverStatusBrush = new(Colors.Green);
+
     public ObservableCollection<string> VersionOptions { get; } = new();
 
     public ObservableCollection<BeatmapSourceOption> BeatmapSourceOptions { get; } = new()
     {
         new("CustomLevels", "Custom Levels"),
-        new("CustomWIPLevels", "Remapper Output"),
+        new("CustomWIPLevels", "Custom WIP Levels"),
+        new("RemapperOutput", "Remapper Output"),
     };
 
     public MainViewModel()
@@ -59,6 +67,13 @@ public partial class MainViewModel : ViewModelBase
         EnableStartup = savedSettings.EnableStartup;
         SelectedBeatmapSource = GetBeatmapSourceName(savedSettings.SelectedBeatmapSource);
         SelectedBeatmapSourceOption = BeatmapSourceOptions.FirstOrDefault(option => string.Equals(option.Value, SelectedBeatmapSource, StringComparison.OrdinalIgnoreCase));
+        ServerRunning = BeatmapHttpServer.IsRunning;
+        UpdateServerStatusBrush();
+        BeatmapHttpServer.ServerStatusChanged += status =>
+        {
+            ServerRunning = status;
+            UpdateServerStatusBrush();
+        };
         RefreshVersionOptions();
 
         if (!string.IsNullOrWhiteSpace(savedSettings.SelectedVersion) && VersionOptions.Contains(savedSettings.SelectedVersion))
@@ -130,6 +145,16 @@ public partial class MainViewModel : ViewModelBase
         {
             return "127.0.0.1";
         }
+    }
+
+    partial void OnServerRunningChanged(bool value)
+    {
+        UpdateServerStatusBrush();
+    }
+
+    private void UpdateServerStatusBrush()
+    {
+        ServerStatusBrush = new SolidColorBrush(ServerRunning ? Colors.Green : Colors.Red);
     }
 
     public void SaveSelectedFolder(string folderPath)
@@ -207,9 +232,17 @@ public partial class MainViewModel : ViewModelBase
 
     public static string GetBeatmapSourceName(string? value)
     {
-        return string.Equals(value, "CustomWIPLevels", StringComparison.OrdinalIgnoreCase)
-            ? "CustomWIPLevels"
-            : "CustomLevels";
+        if (string.Equals(value, "CustomWIPLevels", StringComparison.OrdinalIgnoreCase))
+        {
+            return "CustomWIPLevels";
+        }
+
+        if (string.Equals(value, "RemapperOutput", StringComparison.OrdinalIgnoreCase))
+        {
+            return "RemapperOutput";
+        }
+
+        return "CustomLevels";
     }
 
     public static string GetBeatmapRootPath(string selectedFolder, string? selectedVersion, string? selectedBeatmapSource)
@@ -222,6 +255,11 @@ public partial class MainViewModel : ViewModelBase
         var source = GetBeatmapSourceName(selectedBeatmapSource);
         if (string.Equals(source, "CustomWIPLevels", StringComparison.OrdinalIgnoreCase))
         {
+            return Path.Combine(selectedFolder, selectedVersion, "Beat Saber_Data", "CustomWIPLevels");
+        }
+
+        if (string.Equals(source, "RemapperOutput", StringComparison.OrdinalIgnoreCase))
+        {
             return Path.Combine(selectedFolder, selectedVersion, "Beat Saber_Data", "CustomWIPLevels", "OutputMaps");
         }
 
@@ -232,6 +270,11 @@ public partial class MainViewModel : ViewModelBase
     {
         var source = GetBeatmapSourceName(selectedBeatmapSource);
         if (string.Equals(source, "CustomWIPLevels", StringComparison.OrdinalIgnoreCase))
+        {
+            return Path.Combine(versionFolder, "Beat Saber_Data", "CustomWIPLevels");
+        }
+
+        if (string.Equals(source, "RemapperOutput", StringComparison.OrdinalIgnoreCase))
         {
             return Path.Combine(versionFolder, "Beat Saber_Data", "CustomWIPLevels", "OutputMaps");
         }

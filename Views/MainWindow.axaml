@@ -3,85 +3,217 @@
         xmlns:vm="using:BeatmapPorter.ViewModels"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="620"
         x:Class="BeatmapPorter.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="BeatmapPorter">
+        Title="BeatmapPorter"
+        Width="920"
+        Height="620"
+        MinWidth="760"
+        MinHeight="500"
+        Background="#0a0d14">
 
     <Design.DataContext>
         <vm:MainViewModel />
     </Design.DataContext>
 
-    <StackPanel Margin="20" Spacing="12" Background="#2b2d31">
-        <TextBlock Text="BeatmapPorter Settings"
-                   FontSize="24"
-                   TextAlignment="Center"
-                   FontWeight="SemiBold"
-                   Foreground="#f2f3f5" />
+    <Grid Margin="18" RowDefinitions="Auto,*" RowSpacing="18">
+        <Border Grid.Row="0"
+                CornerRadius="16"
+                BorderBrush="#7dd3fc"
+                BorderThickness="1.25"
+                Padding="18,14"
+                Background="#0c1524">
+            <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center" ColumnSpacing="14">
+                <Border Grid.Column="0"
+                        Width="38"
+                        Height="38"
+                        CornerRadius="10"
+                        Background="#dff9ff"
+                        BorderBrush="#7dd3fc"
+                        BorderThickness="1.1">
+                    <Image Source="/Assets/avalonia-logo.ico"
+                           Width="24"
+                           Height="24"
+                           Stretch="Uniform" />
+                </Border>
 
-        <TextBox Text="{Binding SelectedFolder}"
-                 IsReadOnly="True"
-                 TextWrapping="Wrap"
-                 Background="#1e1f22"
-                 Foreground="#f2f3f5" />
-
-        <Button Content="Choose Folder"
-                Width="120"
-                HorizontalAlignment="Left"
-                Click="BrowseFolder_Click"
-                Background="#5865f2"
-                Foreground="#ffffff" />
-
-        <Border Height="8" Width="1" IsHitTestVisible="False" />
-
-        <TextBlock Text="{Binding CustomLevelsSizeText, StringFormat='Required Space: {0}'}"
-                   Foreground="#2ecc71"
-                   FontSize="16"
-                   FontWeight="SemiBold"
-                   HorizontalAlignment="Left" />
-
-        <StackPanel Orientation="Horizontal" Spacing="12">
-            <ComboBox ItemsSource="{Binding VersionOptions}"
-                      SelectedItem="{Binding SelectedVersion}"
-                      PlaceholderText="Select a Beat Saber version"
-                      Width="220"
-                      HorizontalAlignment="Left" />
-
-            <ComboBox ItemsSource="{Binding BeatmapSourceOptions}"
-                      SelectedItem="{Binding SelectedBeatmapSourceOption}"
-                      PlaceholderText="Select source"
-                      Width="200"
-                      HorizontalAlignment="Left"
-                      DisplayMemberBinding="{Binding Label}" />
-        </StackPanel>
-
-        <CheckBox Content="Enable Startup"
-                  IsChecked="{Binding EnableStartup}"
-                  Foreground="#f2f3f5" />
-
-        <StackPanel Spacing="8" Margin="0,14,0,0" HorizontalAlignment="Center">
-            <TextBlock Text="Network access"
-                       Foreground="#f2f3f5"
-                       FontWeight="SemiBold"
-                       FontSize="20"
-                       HorizontalAlignment="Center" />
-
-            <Border Background="#1e1f22"
-                    CornerRadius="14"
-                    Padding="18,12"
-                    BorderBrush="#40444b"
-                    BorderThickness="1"
-                    Width="360">
-                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="12">
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="IP" Foreground="#b5bac1" FontWeight="SemiBold" FontSize="18" VerticalAlignment="Center" />
-                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding LocalAddress}" Foreground="#f2f3f5" FontSize="18" VerticalAlignment="Center" />
-
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Port" Foreground="#b5bac1" FontWeight="SemiBold" FontSize="18" VerticalAlignment="Center" />
-                    <TextBlock Grid.Row="1" Grid.Column="1" Text="5050" Foreground="#f2f3f5" FontSize="18" VerticalAlignment="Center" />
+                <Grid Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="BeatmapPorter"
+                               FontSize="25"
+                               FontWeight="Bold"
+                               Foreground="#f8fafc"
+                               VerticalAlignment="Center" />
                 </Grid>
+
+                <Border Grid.Column="2"
+                        Width="12"
+                        Height="12"
+                        CornerRadius="999"
+                        BorderBrush="#dff9ff"
+                        BorderThickness="1"
+                        Background="{Binding ServerStatusBrush}"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1" ColumnDefinitions="1.7*,0.9*" ColumnSpacing="18">
+            <Border Grid.Column="0"
+                    CornerRadius="18"
+                    Padding="18"
+                    BorderBrush="#1f3a5b"
+                    BorderThickness="1.2"
+                    Background="#0d1726">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Configuration"
+                               FontSize="17"
+                               FontWeight="SemiBold"
+                               Foreground="#edf6ff" />
+
+                    <StackPanel Spacing="7">
+                        <TextBlock Text="Beat Saber folder"
+                                   Foreground="#9ab9d8"
+                                   FontSize="11"
+                                   FontWeight="SemiBold" />
+
+                        <TextBox Text="{Binding SelectedFolder}"
+                                 IsReadOnly="True"
+                                 TextWrapping="Wrap"
+                                 Height="48"
+                                 Padding="12,10"
+                                 VerticalContentAlignment="Center"
+                                 Background="#09141d"
+                                 Foreground="#f8fafc"
+                                 BorderBrush="#7dd3fc"
+                                 BorderThickness="1.1"
+                                 CornerRadius="8" />
+                    </StackPanel>
+
+                    <Button Content="Choose Folder"
+                            Width="152"
+                            Height="36"
+                            HorizontalAlignment="Left"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            Click="BrowseFolder_Click"
+                            CornerRadius="8"
+                            FontWeight="SemiBold"
+                            BorderBrush="#7dd3fc"
+                            BorderThickness="1">
+                        <Button.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                <GradientStop Color="#e0f2fe" Offset="0" />
+                                <GradientStop Color="#7dd3fc" Offset="0.5" />
+                                <GradientStop Color="#93c5fd" Offset="1" />
+                            </LinearGradientBrush>
+                        </Button.Background>
+                        <Button.Foreground>#081621</Button.Foreground>
+                    </Button>
+
+                    <Border Padding="10,9"
+                            CornerRadius="10"
+                            BorderBrush="#2f5f94"
+                            BorderThickness="1"
+                            Background="#091825">
+                        <TextBlock Text="{Binding CustomLevelsSizeText, StringFormat='Required space: {0}'}"
+                                   Foreground="#7ef7c6"
+                                   FontSize="14"
+                                   FontWeight="SemiBold" />
+                    </Border>
+
+                    <Grid ColumnDefinitions="220,12,220" RowDefinitions="Auto,Auto" ColumnSpacing="0" RowSpacing="7">
+                        <TextBlock Grid.Row="0" Grid.Column="0"
+                                   Text="Beat Saber version"
+                                   Foreground="#9ab9d8"
+                                   FontSize="11"
+                                   FontWeight="SemiBold" />
+
+                        <TextBlock Grid.Row="0" Grid.Column="2"
+                                   Text="Source"
+                                   Foreground="#9ab9d8"
+                                   FontSize="11"
+                                   FontWeight="SemiBold" />
+
+                        <ComboBox Grid.Row="1" Grid.Column="0"
+                                  ItemsSource="{Binding VersionOptions}"
+                                  SelectedItem="{Binding SelectedVersion}"
+                                  PlaceholderText="Select version"
+                                  Width="220"
+                                  HorizontalAlignment="Left"
+                                  Background="#0a1524"
+                                  BorderBrush="#2f5f94" />
+
+                        <ComboBox Grid.Row="1" Grid.Column="2"
+                                  ItemsSource="{Binding BeatmapSourceOptions}"
+                                  SelectedItem="{Binding SelectedBeatmapSourceOption}"
+                                  PlaceholderText="Select source"
+                                  Width="220"
+                                  HorizontalAlignment="Left"
+                                  Background="#0a1524"
+                                  BorderBrush="#2f5f94"
+                                  DisplayMemberBinding="{Binding Label}" />
+                    </Grid>
+
+                    <Border Padding="12,9"
+                            CornerRadius="10"
+                            BorderBrush="#7dd3fc"
+                            BorderThickness="1"
+                            Background="#0b1727">
+                        <CheckBox Content="Enable Startup"
+                                  IsChecked="{Binding EnableStartup}"
+                                  Foreground="#e0f2fe"
+                                  FontSize="13" />
+                    </Border>
+                </StackPanel>
             </Border>
 
-        </StackPanel>
-    </StackPanel>
+            <Border Grid.Column="1"
+                    CornerRadius="18"
+                    Padding="18"
+                    BorderBrush="#1f3a5b"
+                    BorderThickness="1.2"
+                    Background="#0d1726">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Network"
+                               FontSize="17"
+                               FontWeight="SemiBold"
+                               Foreground="#edf6ff" />
+
+                    <Border Background="#091824"
+                            CornerRadius="12"
+                            Padding="12,10"
+                            BorderBrush="#2f5f94"
+                            BorderThickness="1">
+                        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="10">
+                            <TextBlock Grid.Row="0" Grid.Column="0"
+                                       Text="IP"
+                                       Foreground="#9ab9d8"
+                                       FontWeight="SemiBold"
+                                       FontSize="14" />
+                            <TextBlock Grid.Row="0" Grid.Column="1"
+                                       Text="{Binding LocalAddress}"
+                                       Foreground="#f8fafc"
+                                       FontSize="14"
+                                       FontWeight="Medium" />
+
+                            <TextBlock Grid.Row="1" Grid.Column="0"
+                                       Text="Port"
+                                       Foreground="#9ab9d8"
+                                       FontWeight="SemiBold"
+                                       FontSize="14" />
+                            <TextBlock Grid.Row="1" Grid.Column="1"
+                                       Text="5050"
+                                       Foreground="#dff9ff"
+                                       FontWeight="SemiBold"
+                                       FontSize="12"
+                                       HorizontalAlignment="Left" />
+                        </Grid>
+                    </Border>
+
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
 </Window>
