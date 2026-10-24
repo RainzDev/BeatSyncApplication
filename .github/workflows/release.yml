@@ -46,27 +46,30 @@ jobs:
         run: dotnet restore "BeatmapPoterApplication.csproj"
 
       - name: Publish application
+        shell: bash
         run: |
           dotnet publish "BeatmapPoterApplication.csproj" \
             -c Release \
             -r "${{ matrix.rid }}" \
-            --self-contained false \
-            -p:PublishSingleFile=false \
-            -p:UseAppHost=true
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:UseAppHost=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true
 
       - name: Package artifact
         shell: bash
         run: |
+          mkdir -p dist
           PUBLISH_DIR="bin/Release/net10.0/${{ matrix.rid }}/publish"
-          ARCHIVE_PATH="${{ matrix.artifact_name }}.zip"
+          ARCHIVE_PATH="dist/${{ matrix.artifact_name }}.zip"
           cd "$PUBLISH_DIR"
-          zip -r "../../../../${ARCHIVE_PATH}" .
+          zip -r "${GITHUB_WORKSPACE}/${ARCHIVE_PATH}" .
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.artifact_name }}.zip
+          path: dist/${{ matrix.artifact_name }}.zip
 
   release:
     name: Publish GitHub Release
@@ -99,4 +102,6 @@ jobs:
           name: ${{ steps.release_meta.outputs.release_name }}
           files: |
             release-artifacts/**/*.zip
+            release-artifacts/**/*.ZIP
           generate_release_notes: true
+          fail_on_unmatched_files: false
