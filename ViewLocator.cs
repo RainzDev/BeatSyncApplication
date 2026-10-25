@@ -2,9 +2,9 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
-using BeatmapPorter.ViewModels;
+using BeatSync.ViewModels;
 
-namespace BeatmapPorter;
+namespace BeatSync;
 
 /// <summary>
 /// Given a view model, returns the corresponding view if possible.

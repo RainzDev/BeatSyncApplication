@@ -1,7 +1,7 @@
 ﻿using Avalonia;
 using System;
 
-namespace BeatmapPorter;
+namespace BeatSync;
 
 sealed class Program
 {

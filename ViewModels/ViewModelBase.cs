@@ -1,6 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 
-namespace BeatmapPorter.ViewModels;
+namespace BeatSync.ViewModels;
 
 public abstract class ViewModelBase : ObservableObject
 {

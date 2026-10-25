@@ -8,10 +8,10 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using Avalonia.Media;
-using BeatmapPorter.Models;
+using BeatSync.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 
-namespace BeatmapPorter.ViewModels;
+namespace BeatSync.ViewModels;
 
 public partial class MainViewModel : ViewModelBase
 {
@@ -351,14 +351,14 @@ public partial class MainViewModel : ViewModelBase
         var autostartDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "autostart");
         Directory.CreateDirectory(autostartDir);
 
-        var desktopFilePath = Path.Combine(autostartDir, "beatmapporterapplication.desktop");
+        var desktopFilePath = Path.Combine(autostartDir, "beatsyncapplication.desktop");
         var executablePath = Environment.ProcessPath ?? AppContext.BaseDirectory;
 
         if (enableStartup)
         {
             var desktopFile = "[Desktop Entry]\n" +
                               "Type=Application\n" +
-                              "Name=BeatmapPorter\n" +
+                              "Name=BeatSync\n" +
                               "Exec=\"" + executablePath.Replace("\\", "\\\\") + "\"\n" +
                               "Terminal=false\n" +
                               "X-GNOME-Autostart-enabled=true\n";

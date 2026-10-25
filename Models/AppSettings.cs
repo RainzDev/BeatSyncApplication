@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 
-namespace BeatmapPorter.Models;
+namespace BeatSync.Models;
 
 public sealed class AppSettings
 {
@@ -16,7 +16,7 @@ public sealed class AppSettings
         get
         {
             var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var folder = Path.Combine(appData, "BeatmapPorter");
+            var folder = Path.Combine(appData, "BeatSync");
             Directory.CreateDirectory(folder);
             return Path.Combine(folder, "appsettings.json");
         }

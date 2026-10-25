@@ -1,10 +1,10 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
-using BeatmapPorter.ViewModels;
-using BeatmapPorter.Views;
+using BeatSync.ViewModels;
+using BeatSync.Views;
 
-namespace BeatmapPorter;
+namespace BeatSync;
 
 public partial class App : Application
 {

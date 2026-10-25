@@ -5,9 +5,9 @@ using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
-using BeatmapPorter.ViewModels;
+using BeatSync.ViewModels;
 
-namespace BeatmapPorter.Views;
+namespace BeatSync.Views;
 
 public partial class MainWindow : Window
 {

@@ -7,14 +7,14 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
-using BeatmapPorter.Models;
-using BeatmapPorter.ViewModels;
+using BeatSync.Models;
+using BeatSync.ViewModels;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.StaticFiles;
 
-namespace BeatmapPorter;
+namespace BeatSync;
 
 public static class BeatmapHttpServer
 {
@@ -225,7 +225,7 @@ public static class BeatmapHttpServer
         builder.AppendLine("<html lang=\"en\">");
         builder.AppendLine("<head>");
         builder.AppendLine("<meta charset=\"utf-8\" />");
-        builder.AppendLine("<title>BeatmapPorter</title>");
+        builder.AppendLine("<title>BeatSync</title>");
         builder.AppendLine("<style>");
         builder.AppendLine("body { font-family: Arial, sans-serif; background: #2b2d31; color: #f2f3f5; margin: 24px; }");
         builder.AppendLine("h1 { margin-bottom: 20px; }");
@@ -238,7 +238,7 @@ public static class BeatmapHttpServer
         builder.AppendLine("</style>");
         builder.AppendLine("</head>");
         builder.AppendLine("<body>");
-        builder.AppendLine("<h1>BeatmapPorter</h1>");
+        builder.AppendLine("<h1>BeatSync</h1>");
 
         if (version is null)
         {
