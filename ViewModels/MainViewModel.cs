@@ -297,15 +297,36 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        long totalBytes = 0;
-        foreach (var filePath in Directory.EnumerateFiles(customLevelsPath, "*", SearchOption.AllDirectories))
+        var candidateFolders = Directory.EnumerateDirectories(customLevelsPath);
+
+        if (string.Equals(SelectedBeatmapSource, "CustomWIPLevels", StringComparison.OrdinalIgnoreCase))
         {
-            var fileInfo = new FileInfo(filePath);
-            totalBytes += fileInfo.Length;
+            candidateFolders = candidateFolders.Where(folder => !ContainsAssetsFolder(folder));
+        }
+
+        long totalBytes = 0;
+        foreach (var folderPath in candidateFolders)
+        {
+            foreach (var filePath in Directory.EnumerateFiles(folderPath, "*", SearchOption.AllDirectories))
+            {
+                var fileInfo = new FileInfo(filePath);
+                totalBytes += fileInfo.Length;
+            }
         }
 
         var sizeInMb = totalBytes / (double)(1024 * 1024);
         CustomLevelsSizeText = $"{sizeInMb:0.##} MB";
+    }
+
+    private static bool ContainsAssetsFolder(string path)
+    {
+        if (!Directory.Exists(path))
+        {
+            return false;
+        }
+
+        return Directory.EnumerateDirectories(path, "*", SearchOption.AllDirectories)
+            .Any(directory => string.Equals(Path.GetFileName(directory), "Assets", StringComparison.OrdinalIgnoreCase));
     }
 
     public sealed class BeatmapSourceOption

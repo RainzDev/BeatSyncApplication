@@ -156,11 +156,13 @@
                                   DisplayMemberBinding="{Binding Label}" />
                     </Grid>
 
-                    <Border Padding="12,9"
+                    <Border Padding="10,8"
                             CornerRadius="10"
                             BorderBrush="#7dd3fc"
                             BorderThickness="1"
-                            Background="#0b1727">
+                            Background="#0b1727"
+                            HorizontalAlignment="Left"
+                            Width="160">
                         <CheckBox Content="Enable Startup"
                                   IsChecked="{Binding EnableStartup}"
                                   Foreground="#e0f2fe"
