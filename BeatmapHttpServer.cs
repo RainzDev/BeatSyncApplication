@@ -236,6 +236,11 @@ public static class BeatmapHttpServer
                 {
                     return false;
                 }
+
+                if (ShouldHideEntryFromApi(path))
+                {
+                    return false;
+                }
             }
 
             return true;
@@ -429,6 +434,12 @@ public static class BeatmapHttpServer
 
         var rootFolderName = Path.GetFileName(rootFolderPath);
         if (string.Equals(firstSegment, rootFolderName, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var firstSegmentPath = Path.Combine(rootFolderPath, firstSegment);
+        if (Directory.Exists(firstSegmentPath) && ShouldHideEntryFromApi(firstSegmentPath))
         {
             return false;
         }
