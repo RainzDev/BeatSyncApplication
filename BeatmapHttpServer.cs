@@ -45,7 +45,8 @@ public static class BeatmapHttpServer
                 return Results.NotFound();
             }
 
-            var archiveBytes = CreateZipForFolder(folderPath);
+            var source = GetSelectedBeatmapSource();
+            var archiveBytes = CreateZipForFolder(folderPath, filePath => ShouldIncludeFileInDownload(filePath, folderPath, source));
             return Results.File(new MemoryStream(archiveBytes), "application/zip", $"{customLevel}.zip");
         });
         app.MapGet("/api/beatmaps/download/{customLevel}/{*relativePath}", (string customLevel, string? relativePath) =>
@@ -56,9 +57,11 @@ public static class BeatmapHttpServer
                 return Results.NotFound();
             }
 
+            var source = GetSelectedBeatmapSource();
+
             if (string.IsNullOrWhiteSpace(relativePath))
             {
-                var archiveBytes = CreateZipForFolder(folderPath);
+                var archiveBytes = CreateZipForFolder(folderPath, filePath => ShouldIncludeFileInDownload(filePath, folderPath, source));
                 return Results.File(new MemoryStream(archiveBytes), "application/zip", $"{customLevel}.zip");
             }
 
@@ -70,6 +73,11 @@ public static class BeatmapHttpServer
                 return Results.BadRequest();
             }
 
+            if (!ShouldIncludePathInDownload(targetPath, folderPath, source))
+            {
+                return Results.NotFound();
+            }
+
             if (File.Exists(targetPath))
             {
                 var provider = new FileExtensionContentTypeProvider();
@@ -79,7 +87,7 @@ public static class BeatmapHttpServer
 
             if (Directory.Exists(targetPath))
             {
-                var archiveBytes = CreateZipForFolder(targetPath);
+                var archiveBytes = CreateZipForFolder(targetPath, filePath => ShouldIncludeFileInDownload(filePath, targetPath, source));
                 return Results.File(new MemoryStream(archiveBytes), "application/zip", $"{Path.GetFileName(targetPath)}.zip");
             }
 
@@ -177,13 +185,13 @@ public static class BeatmapHttpServer
         {
             Name = Path.GetFileName(versionFolderPath) ?? "Unknown",
             Source = source,
-            CustomLevels = GetCustomLevels(MainViewModel.GetBeatmapRootPath(versionFolderPath, settings.SelectedBeatmapSource)),
+            CustomLevels = GetCustomLevels(MainViewModel.GetBeatmapRootPath(versionFolderPath, settings.SelectedBeatmapSource), source),
         };
 
         return version.CustomLevels.Count > 0 ? version : null;
     }
 
-    private static List<CustomLevelFolder> GetCustomLevels(string customLevelsFolder)
+    private static List<CustomLevelFolder> GetCustomLevels(string customLevelsFolder, string source)
     {
         if (!Directory.Exists(customLevelsFolder))
         {
@@ -196,13 +204,44 @@ public static class BeatmapHttpServer
             {
                 Name = Path.GetFileName(folder) ?? "Unknown",
                 Contents = Directory.EnumerateFileSystemEntries(folder)
-                    .Where(entry => !ShouldHideEntryFromApi(entry))
+                    .Where(entry => ShouldIncludeEntryInApi(entry, source, folder))
                     .Select(entry => Path.GetFileName(entry) ?? "")
                     .Where(name => !string.IsNullOrWhiteSpace(name))
                     .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
                     .ToList(),
             })
             .ToList();
+    }
+
+    private static bool ShouldIncludeEntryInApi(string path, string source, string parentFolderPath)
+    {
+        if (string.Equals(source, "CustomWIPLevels", StringComparison.OrdinalIgnoreCase))
+        {
+            var entryName = Path.GetFileName(path);
+            var parentFolderName = Path.GetFileName(parentFolderPath);
+
+            if (string.Equals(Path.GetExtension(path), ".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (Directory.Exists(path))
+            {
+                if (string.Equals(entryName, "autosaves", StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+
+                if (string.Equals(entryName, parentFolderName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        return !ShouldHideEntryFromApi(path);
     }
 
     private static bool ShouldHideEntryFromApi(string path)
@@ -321,13 +360,99 @@ public static class BeatmapHttpServer
             .FirstOrDefault(folder => string.Equals(Path.GetFileName(folder), customLevel, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static byte[] CreateZipForFolder(string folderPath)
+    private static string GetSelectedBeatmapSource()
+    {
+        var settings = AppSettings.Load();
+        return MainViewModel.GetBeatmapSourceName(settings.SelectedBeatmapSource);
+    }
+
+    private static bool ShouldIncludePathInDownload(string path, string rootFolderPath, string source)
+    {
+        if (!string.Equals(source, "CustomWIPLevels", StringComparison.OrdinalIgnoreCase))
+        {
+            if (Directory.Exists(path))
+            {
+                return !ShouldHideEntryFromApi(path);
+            }
+
+            if (File.Exists(path))
+            {
+                var rootFullPath = Path.GetFullPath(rootFolderPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                var currentDirectory = Path.GetDirectoryName(path);
+
+                while (!string.IsNullOrWhiteSpace(currentDirectory))
+                {
+                    if (ShouldHideEntryFromApi(currentDirectory))
+                    {
+                        return false;
+                    }
+
+                    var currentFullPath = Path.GetFullPath(currentDirectory)
+                        .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+                    if (string.Equals(currentFullPath, rootFullPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        break;
+                    }
+
+                    currentDirectory = Path.GetDirectoryName(currentDirectory);
+                }
+            }
+
+            return true;
+        }
+
+        if (File.Exists(path) && string.Equals(Path.GetExtension(path), ".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var relativePath = Path.GetRelativePath(rootFolderPath, path).Replace('\\', '/');
+        if (string.IsNullOrWhiteSpace(relativePath) || string.Equals(relativePath, ".", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var firstSegment = relativePath
+            .Split('/', StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(firstSegment))
+        {
+            return true;
+        }
+
+        if (string.Equals(firstSegment, "autosaves", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var rootFolderName = Path.GetFileName(rootFolderPath);
+        if (string.Equals(firstSegment, rootFolderName, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool ShouldIncludeFileInDownload(string filePath, string rootFolderPath, string source)
+    {
+        return File.Exists(filePath) && ShouldIncludePathInDownload(filePath, rootFolderPath, source);
+    }
+
+    private static byte[] CreateZipForFolder(string folderPath, Func<string, bool>? includeFile = null)
     {
         using var stream = new MemoryStream();
         using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
         {
             foreach (var file in Directory.EnumerateFiles(folderPath, "*", SearchOption.AllDirectories))
             {
+                if (includeFile is not null && !includeFile(file))
+                {
+                    continue;
+                }
+
                 var relativePath = Path.GetRelativePath(folderPath, file).Replace('\\', '/');
                 archive.CreateEntryFromFile(file, relativePath, CompressionLevel.Optimal);
             }
