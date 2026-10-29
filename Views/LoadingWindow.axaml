@@ -6,11 +6,19 @@
         Height="260"
         CanResize="False"
         WindowStartupLocation="CenterScreen"
+        CornerRadius="18"
         ShowInTaskbar="False"
         ExtendClientAreaToDecorationsHint="True"
         WindowDecorations="None"
-        Background="#0a0d14">
-    <Grid RowDefinitions="*,Auto,Auto" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24">
+        Background="Transparent"
+        TransparencyLevelHint="Blur"
+        ClipToBounds="True">
+    <Border CornerRadius="18"
+            ClipToBounds="True"
+            Background="#0a0d14"
+            BorderBrush="#1f2a38"
+            BorderThickness="1">
+        <Grid RowDefinitions="*,Auto,Auto" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24">
         <Border Grid.Row="0"
                 Width="84"
                 Height="84"
@@ -47,17 +55,23 @@
         </Border>
 
         <TextBlock Grid.Row="1"
+                   x:Name="StatusTextBlock"
                    Text="Loading BeatSync..."
-                   FontSize="22"
+                   FontSize="16"
                    FontWeight="SemiBold"
                    Foreground="#edf6ff"
                    Margin="0,18,0,4"
-                   HorizontalAlignment="Center" />
+                   HorizontalAlignment="Center"
+                   MaxWidth="300"
+                   TextWrapping="Wrap"
+                   TextAlignment="Center" />
 
         <TextBlock Grid.Row="2"
-                   Text="Preparing beatmaps and settings"
+                   x:Name="SubtitleTextBlock"
+                   Text="Fluxing the sabers currently"
                    FontSize="12"
                    Foreground="#9ab9d8"
                    HorizontalAlignment="Center" />
-    </Grid>
+        </Grid>
+    </Border>
 </Window>
