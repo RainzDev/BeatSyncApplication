@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Threading;
 using BeatSync.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Win32;
@@ -79,6 +80,8 @@ public partial class MainViewModel : ViewModelBase
     public ObservableCollection<BeatmapEntryViewModel> BeatmapEntries { get; } = new();
 
     public ObservableCollection<BeatmapEntryViewModel> SelectedBeatmaps { get; } = new();
+
+    private DispatcherTimer? _selectionRefreshTimer;
 
     public ObservableCollection<BeatmapSourceOption> BeatmapSourceOptions { get; } = new()
     {
@@ -219,6 +222,25 @@ public partial class MainViewModel : ViewModelBase
         }
 
         AppSettings.Save(SelectedFolder, EnableStartup, SelectedVersion, SelectedBeatmapSource, HideBeatmapList, SelectedBeatmaps.Select(entry => entry.Name), ServerPort);
+        QueueSelectionRefresh();
+    }
+
+    private void QueueSelectionRefresh()
+    {
+        _selectionRefreshTimer ??= new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(75),
+        };
+
+        _selectionRefreshTimer.Stop();
+        _selectionRefreshTimer.Tick -= SelectionRefreshTimer_Tick;
+        _selectionRefreshTimer.Tick += SelectionRefreshTimer_Tick;
+        _selectionRefreshTimer.Start();
+    }
+
+    private void SelectionRefreshTimer_Tick(object? sender, EventArgs e)
+    {
+        _selectionRefreshTimer?.Stop();
         UpdateCustomLevelsSizeText();
         UpdateBeatmapJsonPreview();
     }
@@ -463,8 +485,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(SelectionEnabled));
         OnPropertyChanged(nameof(HideBeatmapListToggle));
         AppSettings.Save(SelectedFolder, EnableStartup, SelectedVersion, SelectedBeatmapSource, value);
-        UpdateCustomLevelsSizeText();
-        UpdateBeatmapJsonPreview();
+        QueueSelectionRefresh();
     }
 
     partial void OnBeatmapSearchTextChanged(string value)

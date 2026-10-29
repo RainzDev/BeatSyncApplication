@@ -280,62 +280,87 @@
                                      Background="Transparent"
                                      BorderThickness="0"
                                      SelectionChanged="BeatmapList_SelectionChanged">
+                                <ListBox.ItemContainerTheme>
+                                    <ControlTheme TargetType="ListBoxItem">
+                                        <Setter Property="Background" Value="Transparent" />
+                                        <Setter Property="BorderBrush" Value="#2a4d70" />
+                                        <Setter Property="BorderThickness" Value="1" />
+                                        <Setter Property="CornerRadius" Value="12" />
+                                        <Setter Property="Padding" Value="0" />
+                                        <Setter Property="Margin" Value="0,0,0,10" />
+                                        <Setter Property="Template">
+                                            <ControlTemplate>
+                                                <Border Background="{TemplateBinding Background}"
+                                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                                        CornerRadius="{TemplateBinding CornerRadius}"
+                                                        Padding="{TemplateBinding Padding}">
+                                                    <ContentPresenter Content="{TemplateBinding Content}"
+                                                                      ContentTemplate="{TemplateBinding ContentTemplate}" />
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter>
+                                        <Style Selector="^:selected">
+                                            <Setter Property="Background" Value="Transparent" />
+                                            <Setter Property="BorderBrush" Value="#2a4d70" />
+                                        </Style>
+                                        <Style Selector="^:pointerover">
+                                            <Setter Property="BorderThickness" Value="2" />
+                                        </Style>
+                                        <Style Selector="^:not(:pointerover)">
+                                            <Setter Property="BorderThickness" Value="1" />
+                                        </Style>
+                                    </ControlTheme>
+                                </ListBox.ItemContainerTheme>
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
-                                        <Border CornerRadius="12"
-                                                Padding="12"
-                                                Margin="0,0,0,10"
-                                                Background="#0d1a29"
-                                                BorderBrush="#2a4d70"
-                                                BorderThickness="1">
-                                            <Grid ColumnDefinitions="72,*,Auto" ColumnSpacing="14" VerticalAlignment="Center">
-                                                <Border Grid.Column="0"
-                                                        Width="72"
-                                                        Height="72"
-                                                        CornerRadius="12"
-                                                        Background="#122235"
-                                                        BorderBrush="#7dd3fc"
-                                                        BorderThickness="1"
-                                                        ClipToBounds="True">
-                                                    <Grid>
-                                                        <Image Source="{Binding Image}"
-                                                               Stretch="UniformToFill"
-                                                               IsVisible="{Binding HasImage}" />
-                                                        <TextBlock Text="?"
-                                                                   IsVisible="{Binding !HasImage}"
-                                                                   Foreground="#bfe9ff"
-                                                                   FontSize="26"
-                                                                   FontWeight="Bold"
-                                                                   HorizontalAlignment="Center"
-                                                                   VerticalAlignment="Center" />
-                                                    </Grid>
-                                                </Border>
-
-                                                <TextBlock Grid.Column="1"
-                                                           Text="{Binding Name}"
-                                                           VerticalAlignment="Center"
-                                                           Foreground="#edf6ff"
-                                                           FontSize="16"
-                                                           FontWeight="SemiBold"
-                                                           TextTrimming="CharacterEllipsis" />
-
-                                                <Border Grid.Column="2"
-                                                        Width="24"
-                                                        Height="24"
-                                                        CornerRadius="12"
-                                                        Background="#7dd3fc"
-                                                        IsVisible="{Binding $parent[ListBoxItem].IsSelected}"
-                                                        VerticalAlignment="Center"
-                                                        HorizontalAlignment="Right">
-                                                    <TextBlock Text="✔"
-                                                               Foreground="#081720"
-                                                               FontSize="12"
+                                        <Grid ColumnDefinitions="72,*,Auto" ColumnSpacing="14" VerticalAlignment="Center" Margin="12">
+                                            <Border Grid.Column="0"
+                                                    Width="72"
+                                                    Height="72"
+                                                    CornerRadius="12"
+                                                    Background="#122235"
+                                                    BorderBrush="#7dd3fc"
+                                                    BorderThickness="1"
+                                                    ClipToBounds="True">
+                                                <Grid>
+                                                    <Image Source="{Binding Image}"
+                                                           Stretch="UniformToFill"
+                                                           IsVisible="{Binding HasImage}" />
+                                                    <TextBlock Text="?"
+                                                               IsVisible="{Binding !HasImage}"
+                                                               Foreground="#bfe9ff"
+                                                               FontSize="26"
                                                                FontWeight="Bold"
                                                                HorizontalAlignment="Center"
                                                                VerticalAlignment="Center" />
-                                                </Border>
-                                            </Grid>
-                                        </Border>
+                                                </Grid>
+                                            </Border>
+
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{Binding Name}"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="#edf6ff"
+                                                       FontSize="16"
+                                                       FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis" />
+
+                                            <Border Grid.Column="2"
+                                                    Width="24"
+                                                    Height="24"
+                                                    CornerRadius="12"
+                                                    Background="#7dd3fc"
+                                                    IsVisible="{Binding $parent[ListBoxItem].IsSelected}"
+                                                    VerticalAlignment="Center"
+                                                    HorizontalAlignment="Right">
+                                                <TextBlock Text="✔"
+                                                           Foreground="#081720"
+                                                           FontSize="12"
+                                                           FontWeight="Bold"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center" />
+                                            </Border>
+                                        </Grid>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
