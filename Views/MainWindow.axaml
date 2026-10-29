@@ -59,7 +59,7 @@
             </Grid>
         </Border>
 
-        <Grid Grid.Row="1" ColumnDefinitions="1.7*,0.9*" ColumnSpacing="18">
+        <Grid Grid.Row="1" ColumnDefinitions="1.15*,1.0*" ColumnSpacing="18">
             <Border Grid.Column="0"
                     CornerRadius="18"
                     Padding="18"
@@ -168,20 +168,6 @@
                                   Foreground="#e0f2fe"
                                   FontSize="13" />
                     </Border>
-                </StackPanel>
-            </Border>
-
-            <Border Grid.Column="1"
-                    CornerRadius="18"
-                    Padding="18"
-                    BorderBrush="#1f3a5b"
-                    BorderThickness="1.2"
-                    Background="#0d1726">
-                <StackPanel Spacing="16">
-                    <TextBlock Text="Network"
-                               FontSize="17"
-                               FontWeight="SemiBold"
-                               Foreground="#edf6ff" />
 
                     <Border Background="#091824"
                             CornerRadius="12"
@@ -213,8 +199,160 @@
                                        HorizontalAlignment="Left" />
                         </Grid>
                     </Border>
-
                 </StackPanel>
+            </Border>
+
+            <Border Grid.Column="1"
+                    CornerRadius="18"
+                    Padding="18"
+                    BorderBrush="#1f3a5b"
+                    BorderThickness="1.2"
+                    Background="#0d1726">
+                <Grid RowDefinitions="Auto,*,170">
+                    <Grid ColumnDefinitions="Auto,Auto,*" Margin="0,0,0,12" ColumnSpacing="10">
+                        <Border Grid.Column="0"
+                                CornerRadius="10"
+                                Background="#091824"
+                                BorderBrush="#2f5f94"
+                                BorderThickness="1"
+                                Height="40"
+                                Padding="6,4"
+                                HorizontalAlignment="Left"
+                                ClipToBounds="False">
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="8"
+                                        VerticalAlignment="Center"
+                                        Height="24">
+                                <TextBlock Text="Enable Selection"
+                                           Foreground="#f3f9ff"
+                                           FontSize="13"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center" />
+
+                                <ToggleSwitch IsChecked="{Binding HideBeatmapListToggle}"
+                                              OffContent=""
+                                              OnContent=""
+                                              Width="38"
+                                              Height="20"
+                                              VerticalAlignment="Center"
+                                              Margin="0,-10,0,0"
+                                              ClipToBounds="False" />
+                            </StackPanel>
+                        </Border>
+
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding BeatmapSearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 PlaceholderText="Search beatmaps..."
+                                 Width="200"
+                                 Height="32"
+                                 VerticalAlignment="Center"
+                                 Background="#091824"
+                                 Foreground="#f3f9ff"
+                                 BorderBrush="#2f5f94"
+                                 BorderThickness="1"
+                                 Padding="8,4" />
+                    </Grid>
+
+                    <Border Grid.Row="1"
+                            CornerRadius="12"
+                            Background="#0a1420"
+                            BorderBrush="#2f5f94"
+                            BorderThickness="1">
+                        <ScrollViewer>
+                            <ListBox x:Name="BeatmapList"
+                                     ItemsSource="{Binding FilteredBeatmapEntries}"
+                                     IsVisible="{Binding !HideBeatmapList}"
+                                     SelectionMode="Toggle"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     SelectionChanged="BeatmapList_SelectionChanged">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border CornerRadius="12"
+                                                Padding="12"
+                                                Margin="0,0,0,10"
+                                                Background="#0d1a29"
+                                                BorderBrush="#2a4d70"
+                                                BorderThickness="1">
+                                            <Grid ColumnDefinitions="72,*,Auto" ColumnSpacing="14" VerticalAlignment="Center">
+                                                <Border Grid.Column="0"
+                                                        Width="72"
+                                                        Height="72"
+                                                        CornerRadius="12"
+                                                        Background="#122235"
+                                                        BorderBrush="#7dd3fc"
+                                                        BorderThickness="1"
+                                                        ClipToBounds="True">
+                                                    <Grid>
+                                                        <Image Source="{Binding Image}"
+                                                               Stretch="UniformToFill"
+                                                               IsVisible="{Binding HasImage}" />
+                                                        <TextBlock Text="?"
+                                                                   IsVisible="{Binding !HasImage}"
+                                                                   Foreground="#bfe9ff"
+                                                                   FontSize="26"
+                                                                   FontWeight="Bold"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center" />
+                                                    </Grid>
+                                                </Border>
+
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding Name}"
+                                                           VerticalAlignment="Center"
+                                                           Foreground="#edf6ff"
+                                                           FontSize="16"
+                                                           FontWeight="SemiBold"
+                                                           TextTrimming="CharacterEllipsis" />
+
+                                                <Border Grid.Column="2"
+                                                        Width="24"
+                                                        Height="24"
+                                                        CornerRadius="12"
+                                                        Background="#7dd3fc"
+                                                        IsVisible="{Binding $parent[ListBoxItem].IsSelected}"
+                                                        VerticalAlignment="Center"
+                                                        HorizontalAlignment="Right">
+                                                    <TextBlock Text="✔"
+                                                               Foreground="#081720"
+                                                               FontSize="12"
+                                                               FontWeight="Bold"
+                                                               HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center" />
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </ScrollViewer>
+                    </Border>
+
+                    <Border Grid.Row="2"
+                            Margin="0,12,0,0"
+                            CornerRadius="12"
+                            Padding="12"
+                            Background="#091824"
+                            BorderBrush="#2f5f94"
+                            BorderThickness="1">
+                        <Grid RowDefinitions="Auto,*">
+                            <TextBlock Text="JSON preview"
+                                       Foreground="#9ab9d8"
+                                       FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Margin="0,0,0,8" />
+                            <TextBox Grid.Row="1"
+                                     Text="{Binding BeatmapJsonPreview}"
+                                     IsReadOnly="True"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     Background="#07141d"
+                                     Foreground="#e6f8ff"
+                                     BorderThickness="0"
+                                     FontFamily="Consolas" />
+                        </Grid>
+                    </Border>
+                </Grid>
             </Border>
         </Grid>
     </Grid>

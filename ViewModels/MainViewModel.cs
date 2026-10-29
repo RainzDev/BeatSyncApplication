@@ -7,9 +7,12 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using BeatSync.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Microsoft.Win32;
 
 namespace BeatSync.ViewModels;
 
@@ -22,10 +25,27 @@ public partial class MainViewModel : ViewModelBase
     private bool enableStartup;
 
     [ObservableProperty]
+    private bool hideBeatmapList = true;
+
+    [ObservableProperty]
     private string? selectedVersion;
 
     [ObservableProperty]
     private string selectedBeatmapSource = "CustomLevels";
+
+    [ObservableProperty]
+    private string beatmapSearchText = string.Empty;
+
+    public IEnumerable<BeatmapEntryViewModel> FilteredBeatmapEntries =>
+        string.IsNullOrWhiteSpace(BeatmapSearchText)
+            ? BeatmapEntries
+            : BeatmapEntries.Where(entry => entry.Name.Contains(BeatmapSearchText, StringComparison.OrdinalIgnoreCase));
+
+    public bool HideBeatmapListToggle
+    {
+        get => !HideBeatmapList;
+        set => HideBeatmapList = !value;
+    }
 
     [ObservableProperty]
     private BeatmapSourceOption? selectedBeatmapSourceOption;
@@ -42,7 +62,14 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     private SolidColorBrush serverStatusBrush = new(Colors.Green);
 
+    [ObservableProperty]
+    private string beatmapJsonPreview = "{}";
+
     public ObservableCollection<string> VersionOptions { get; } = new();
+
+    public ObservableCollection<BeatmapEntryViewModel> BeatmapEntries { get; } = new();
+
+    public ObservableCollection<BeatmapEntryViewModel> SelectedBeatmaps { get; } = new();
 
     public ObservableCollection<BeatmapSourceOption> BeatmapSourceOptions { get; } = new()
     {
@@ -65,6 +92,7 @@ public partial class MainViewModel : ViewModelBase
         }
 
         EnableStartup = savedSettings.EnableStartup;
+        HideBeatmapList = savedSettings.HideBeatmapList;
         SelectedBeatmapSource = GetBeatmapSourceName(savedSettings.SelectedBeatmapSource);
         SelectedBeatmapSourceOption = BeatmapSourceOptions.FirstOrDefault(option => string.Equals(option.Value, SelectedBeatmapSource, StringComparison.OrdinalIgnoreCase));
         ServerRunning = BeatmapHttpServer.IsRunning;
@@ -81,6 +109,7 @@ public partial class MainViewModel : ViewModelBase
             SelectedVersion = savedSettings.SelectedVersion;
         }
 
+        RefreshBeatmapEntries();
         UpdateCustomLevelsSizeText();
         ApplyStartupSetting(EnableStartup);
     }
@@ -166,7 +195,181 @@ public partial class MainViewModel : ViewModelBase
 
         SelectedFolder = folderPath;
         RefreshVersionOptions();
-        AppSettings.Save(SelectedFolder, EnableStartup, SelectedVersion, SelectedBeatmapSource);
+        RefreshBeatmapEntries();
+        AppSettings.Save(SelectedFolder, EnableStartup, SelectedVersion, SelectedBeatmapSource, HideBeatmapList);
+    }
+
+    public void UpdateSelectedBeatmaps(IEnumerable<BeatmapEntryViewModel> selectedEntries)
+    {
+        SelectedBeatmaps.Clear();
+
+        foreach (var entry in selectedEntries)
+        {
+            SelectedBeatmaps.Add(entry);
+        }
+
+        AppSettings.Save(SelectedFolder, EnableStartup, SelectedVersion, SelectedBeatmapSource, HideBeatmapList, SelectedBeatmaps.Select(entry => entry.Name));
+        UpdateBeatmapJsonPreview();
+    }
+
+    public void RefreshBeatmapEntries()
+    {
+        BeatmapEntries.Clear();
+        SelectedBeatmaps.Clear();
+
+        if (string.IsNullOrWhiteSpace(SelectedFolder) || string.IsNullOrWhiteSpace(SelectedVersion) || !Directory.Exists(SelectedFolder))
+        {
+            OnPropertyChanged(nameof(FilteredBeatmapEntries));
+            BeatmapJsonPreview = "{}";
+            return;
+        }
+
+        var beatmapRootPath = GetBeatmapRootPath(SelectedFolder, SelectedVersion, SelectedBeatmapSource);
+        if (!Directory.Exists(beatmapRootPath))
+        {
+            OnPropertyChanged(nameof(FilteredBeatmapEntries));
+            BeatmapJsonPreview = "{}";
+            return;
+        }
+
+        foreach (var beatmapFolder in Directory.EnumerateDirectories(beatmapRootPath)
+                     .OrderBy(folder => Path.GetFileName(folder), StringComparer.OrdinalIgnoreCase))
+        {
+            var imagePath = FindBeatmapImage(beatmapFolder);
+            var image = LoadBeatmapImage(beatmapFolder);
+            BeatmapEntries.Add(new BeatmapEntryViewModel
+            {
+                Name = Path.GetFileName(beatmapFolder) ?? "Unknown",
+                ImagePath = imagePath,
+                Image = image,
+                HasImage = image is not null,
+            });
+        }
+
+        OnPropertyChanged(nameof(FilteredBeatmapEntries));
+        UpdateBeatmapJsonPreview();
+    }
+
+    private void UpdateBeatmapJsonPreview()
+    {
+        var items = !HideBeatmapList && SelectedBeatmaps.Count > 0
+            ? SelectedBeatmaps
+            : BeatmapEntries;
+
+        var payload = new
+        {
+            version = new
+            {
+                name = SelectedVersion ?? "Unknown",
+                source = SelectedBeatmapSource,
+                customLevels = items.Select(item => new
+                {
+                    name = item.Name,
+                    contents = GetBeatmapContents(item.Name),
+                }).ToList(),
+            }
+        };
+
+        BeatmapJsonPreview = JsonSerializer.Serialize(payload, new JsonSerializerOptions
+        {
+            WriteIndented = true,
+        });
+    }
+
+    private List<string> GetBeatmapContents(string beatmapName)
+    {
+        if (string.IsNullOrWhiteSpace(SelectedFolder) || string.IsNullOrWhiteSpace(SelectedVersion))
+        {
+            return new List<string>();
+        }
+
+        var beatmapRootPath = GetBeatmapRootPath(SelectedFolder, SelectedVersion, SelectedBeatmapSource);
+        if (string.IsNullOrWhiteSpace(beatmapRootPath) || !Directory.Exists(beatmapRootPath))
+        {
+            return new List<string>();
+        }
+
+        var beatmapFolderPath = Path.Combine(beatmapRootPath, beatmapName);
+        if (!Directory.Exists(beatmapFolderPath))
+        {
+            return new List<string>();
+        }
+
+        return Directory.EnumerateFileSystemEntries(beatmapFolderPath)
+            .Where(entry => ShouldIncludeBeatmapEntry(entry, beatmapFolderPath))
+            .Select(entry => Path.GetFileName(entry) ?? string.Empty)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static bool ShouldIncludeBeatmapEntry(string path, string parentFolderPath)
+    {
+        if (string.Equals(Path.GetExtension(path), ".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var entryName = Path.GetFileName(path);
+        var parentFolderName = Path.GetFileName(parentFolderPath);
+
+        if (Directory.Exists(path))
+        {
+            if (string.Equals(entryName, "autosaves", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (string.Equals(entryName, parentFolderName, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (ShouldHideBeatmapEntry(path))
+            {
+                return false;
+            }
+        }
+
+        return !ShouldHideBeatmapEntry(path);
+    }
+
+    private static bool ShouldHideBeatmapEntry(string path)
+    {
+        if (!Directory.Exists(path))
+        {
+            return false;
+        }
+
+        return Directory.EnumerateDirectories(path, "*", SearchOption.AllDirectories)
+            .Any(directory => string.Equals(Path.GetFileName(directory), "Assets", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string? FindBeatmapImage(string beatmapFolder)
+    {
+        return Directory.EnumerateFiles(beatmapFolder, "*.*", SearchOption.AllDirectories)
+            .Where(path => string.Equals(Path.GetExtension(path), ".jpg", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(Path.GetExtension(path), ".png", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+    }
+
+    private static Bitmap? LoadBeatmapImage(string beatmapFolder)
+    {
+        var imagePath = FindBeatmapImage(beatmapFolder);
+        if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            return new Bitmap(imagePath);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public void RefreshVersionOptions()
@@ -203,14 +406,16 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnSelectedVersionChanged(string? value)
     {
-        AppSettings.Save(SelectedFolder, EnableStartup, value, SelectedBeatmapSource);
+        AppSettings.Save(SelectedFolder, EnableStartup, value, SelectedBeatmapSource, HideBeatmapList);
+        RefreshBeatmapEntries();
         UpdateCustomLevelsSizeText();
     }
 
     partial void OnSelectedBeatmapSourceChanged(string value)
     {
         SelectedBeatmapSourceOption = BeatmapSourceOptions.FirstOrDefault(option => string.Equals(option.Value, value, StringComparison.OrdinalIgnoreCase));
-        AppSettings.Save(SelectedFolder, EnableStartup, SelectedVersion, value);
+        AppSettings.Save(SelectedFolder, EnableStartup, SelectedVersion, value, HideBeatmapList);
+        RefreshBeatmapEntries();
         UpdateCustomLevelsSizeText();
     }
 
@@ -227,7 +432,19 @@ public partial class MainViewModel : ViewModelBase
     partial void OnEnableStartupChanged(bool value)
     {
         ApplyStartupSetting(value);
-        AppSettings.Save(SelectedFolder, value, SelectedVersion, SelectedBeatmapSource);
+        AppSettings.Save(SelectedFolder, value, SelectedVersion, SelectedBeatmapSource, HideBeatmapList);
+    }
+
+    partial void OnHideBeatmapListChanged(bool value)
+    {
+        OnPropertyChanged(nameof(HideBeatmapListToggle));
+        AppSettings.Save(SelectedFolder, EnableStartup, SelectedVersion, SelectedBeatmapSource, value);
+        UpdateBeatmapJsonPreview();
+    }
+
+    partial void OnBeatmapSearchTextChanged(string value)
+    {
+        OnPropertyChanged(nameof(FilteredBeatmapEntries));
     }
 
     public static string GetBeatmapSourceName(string? value)
@@ -329,6 +546,14 @@ public partial class MainViewModel : ViewModelBase
             .Any(directory => string.Equals(Path.GetFileName(directory), "Assets", StringComparison.OrdinalIgnoreCase));
     }
 
+    public sealed class BeatmapEntryViewModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public string? ImagePath { get; set; }
+        public Bitmap? Image { get; set; }
+        public bool HasImage { get; set; }
+    }
+
     public sealed class BeatmapSourceOption
     {
         public BeatmapSourceOption(string value, string label)
@@ -343,6 +568,26 @@ public partial class MainViewModel : ViewModelBase
 
     private static void ApplyStartupSetting(bool enableStartup)
     {
+        var executablePath = Environment.ProcessPath ?? AppContext.BaseDirectory;
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            using var runKey = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
+            if (runKey is null)
+            {
+                return;
+            }
+
+            if (enableStartup)
+            {
+                runKey.SetValue("BeatSync", $"\"{executablePath}\"");
+                return;
+            }
+
+            runKey.DeleteValue("BeatSync", false);
+            return;
+        }
+
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
             return;
@@ -352,7 +597,6 @@ public partial class MainViewModel : ViewModelBase
         Directory.CreateDirectory(autostartDir);
 
         var desktopFilePath = Path.Combine(autostartDir, "beatsyncapplication.desktop");
-        var executablePath = Environment.ProcessPath ?? AppContext.BaseDirectory;
 
         if (enableStartup)
         {

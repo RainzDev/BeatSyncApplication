@@ -181,17 +181,19 @@ public static class BeatmapHttpServer
         }
 
         var source = MainViewModel.GetBeatmapSourceName(settings.SelectedBeatmapSource);
+        var selectedBeatmapNames = GetSelectedBeatmapNames(settings);
+        var includeOnlySelected = !settings.HideBeatmapList && selectedBeatmapNames.Count > 0;
         var version = new BeatmapVersion
         {
             Name = Path.GetFileName(versionFolderPath) ?? "Unknown",
             Source = source,
-            CustomLevels = GetCustomLevels(MainViewModel.GetBeatmapRootPath(versionFolderPath, settings.SelectedBeatmapSource), source),
+            CustomLevels = GetCustomLevels(MainViewModel.GetBeatmapRootPath(versionFolderPath, settings.SelectedBeatmapSource), source, includeOnlySelected, selectedBeatmapNames),
         };
 
         return version.CustomLevels.Count > 0 ? version : null;
     }
 
-    private static List<CustomLevelFolder> GetCustomLevels(string customLevelsFolder, string source)
+    private static List<CustomLevelFolder> GetCustomLevels(string customLevelsFolder, string source, bool includeOnlySelected = false, IReadOnlyCollection<string>? selectedBeatmapNames = null)
     {
         if (!Directory.Exists(customLevelsFolder))
         {
@@ -199,6 +201,7 @@ public static class BeatmapHttpServer
         }
 
         return Directory.EnumerateDirectories(customLevelsFolder)
+            .Where(folder => !includeOnlySelected || selectedBeatmapNames is null || selectedBeatmapNames.Count == 0 || selectedBeatmapNames.Contains(Path.GetFileName(folder), StringComparer.OrdinalIgnoreCase))
             .OrderBy(folder => Path.GetFileName(folder), StringComparer.OrdinalIgnoreCase)
             .Select(folder => new CustomLevelFolder
             {
@@ -333,6 +336,9 @@ public static class BeatmapHttpServer
 
         var selectedVersion = settings.SelectedVersion;
         var selectedBeatmapSource = settings.SelectedBeatmapSource;
+        var selectedBeatmapNames = GetSelectedBeatmapNames(settings);
+        var includeOnlySelected = !settings.HideBeatmapList && selectedBeatmapNames.Count > 0;
+
         if (string.IsNullOrWhiteSpace(selectedVersion))
         {
             var versionFolders = Directory.EnumerateDirectories(selectedFolder)
@@ -344,6 +350,7 @@ public static class BeatmapHttpServer
             {
                 var customLevelsRoot = MainViewModel.GetBeatmapRootPath(versionFolder, selectedBeatmapSource);
                 var match = Directory.EnumerateDirectories(customLevelsRoot)
+                    .Where(folder => !includeOnlySelected || selectedBeatmapNames.Contains(Path.GetFileName(folder), StringComparer.OrdinalIgnoreCase))
                     .FirstOrDefault(folder => string.Equals(Path.GetFileName(folder), customLevel, StringComparison.OrdinalIgnoreCase));
 
                 if (!string.IsNullOrWhiteSpace(match))
@@ -362,7 +369,16 @@ public static class BeatmapHttpServer
         }
 
         return Directory.EnumerateDirectories(customLevelsDirectory)
+            .Where(folder => !includeOnlySelected || selectedBeatmapNames.Contains(Path.GetFileName(folder), StringComparer.OrdinalIgnoreCase))
             .FirstOrDefault(folder => string.Equals(Path.GetFileName(folder), customLevel, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static List<string> GetSelectedBeatmapNames(AppSettings settings)
+    {
+        return settings.SelectedBeatmapNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private static string GetSelectedBeatmapSource()

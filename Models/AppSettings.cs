@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 
 namespace BeatSync.Models;
@@ -10,6 +12,8 @@ public sealed class AppSettings
     public string? SelectedVersion { get; set; }
     public string SelectedBeatmapSource { get; set; } = "CustomLevels";
     public bool EnableStartup { get; set; }
+    public bool HideBeatmapList { get; set; } = true;
+    public List<string> SelectedBeatmapNames { get; set; } = new();
 
     public static string ConfigPath
     {
@@ -33,7 +37,7 @@ public sealed class AppSettings
         return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
     }
 
-    public static void Save(string? selectedFolder, bool enableStartup, string? selectedVersion = null, string? selectedBeatmapSource = null)
+    public static void Save(string? selectedFolder, bool enableStartup, string? selectedVersion = null, string? selectedBeatmapSource = null, bool? hideBeatmapList = null, IEnumerable<string>? selectedBeatmapNames = null)
     {
         var settings = Load();
         settings.SelectedFolder = selectedFolder;
@@ -42,6 +46,13 @@ public sealed class AppSettings
         settings.SelectedBeatmapSource = string.IsNullOrWhiteSpace(selectedBeatmapSource)
             ? "CustomLevels"
             : selectedBeatmapSource;
+        settings.HideBeatmapList = hideBeatmapList ?? settings.HideBeatmapList;
+        settings.SelectedBeatmapNames = selectedBeatmapNames is null
+            ? settings.SelectedBeatmapNames
+            : selectedBeatmapNames
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
 
         var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions
         {

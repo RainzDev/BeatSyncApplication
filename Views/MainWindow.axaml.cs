@@ -45,6 +45,26 @@ public partial class MainWindow : Window
         }
     }
 
+    private void BeatmapList_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ListBox listBox)
+        {
+            return;
+        }
+
+        var viewModel = DataContext as MainViewModel;
+        if (viewModel is null)
+        {
+            return;
+        }
+
+        var selected = listBox.SelectedItems?
+            .OfType<MainViewModel.BeatmapEntryViewModel>()
+            .ToList() ?? new List<MainViewModel.BeatmapEntryViewModel>();
+
+        viewModel.UpdateSelectedBeatmaps(selected);
+    }
+
     private static string GetDefaultSelectedFolder()
     {
         var homePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
