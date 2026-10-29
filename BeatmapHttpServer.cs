@@ -29,9 +29,11 @@ public static class BeatmapHttpServer
             return;
         }
 
+        var settings = AppSettings.Load();
         var hostAddress = GetLocalAddress();
+        var port = settings.ServerPort is > 0 and < 65536 ? settings.ServerPort : 5050;
         var builder = WebApplication.CreateBuilder();
-        builder.WebHost.UseUrls($"http://{hostAddress}:5050");
+        builder.WebHost.UseUrls($"http://{hostAddress}:{port}");
 
         var app = builder.Build();
 
@@ -113,6 +115,11 @@ public static class BeatmapHttpServer
 
     public static async void Stop()
     {
+        await StopAsync();
+    }
+
+    public static async Task StopAsync()
+    {
         if (_app is null)
         {
             return;
@@ -122,6 +129,27 @@ public static class BeatmapHttpServer
         await _app.DisposeAsync();
         _app = null;
         ServerStatusChanged?.Invoke(false);
+    }
+
+    public static async Task RestartAsync(int? portOverride = null)
+    {
+        var settings = AppSettings.Load();
+        var nextPort = portOverride is > 0 and < 65536 ? portOverride.Value : settings.ServerPort;
+
+        if (nextPort is <= 0 or >= 65536)
+        {
+            nextPort = 5050;
+        }
+
+        settings.ServerPort = nextPort;
+        AppSettings.Save(settings.SelectedFolder, settings.EnableStartup, settings.SelectedVersion, settings.SelectedBeatmapSource, settings.HideBeatmapList, settings.SelectedBeatmapNames, nextPort);
+
+        if (_app is not null)
+        {
+            await StopAsync();
+        }
+
+        Start();
     }
 
     public static string GetLocalAddress()

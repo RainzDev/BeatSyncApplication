@@ -41,10 +41,16 @@ public partial class MainViewModel : ViewModelBase
             ? BeatmapEntries
             : BeatmapEntries.Where(entry => entry.Name.Contains(BeatmapSearchText, StringComparison.OrdinalIgnoreCase));
 
-    public bool HideBeatmapListToggle
+    public bool SelectionEnabled
     {
         get => !HideBeatmapList;
         set => HideBeatmapList = !value;
+    }
+
+    public bool HideBeatmapListToggle
+    {
+        get => SelectionEnabled;
+        set => SelectionEnabled = value;
     }
 
     [ObservableProperty]
@@ -52,6 +58,9 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     private string localAddress = GetLocalAddress();
+
+    [ObservableProperty]
+    private int serverPort = AppSettings.Load().ServerPort;
 
     [ObservableProperty]
     private string customLevelsSizeText = "0 MB";
@@ -93,6 +102,7 @@ public partial class MainViewModel : ViewModelBase
 
         EnableStartup = savedSettings.EnableStartup;
         HideBeatmapList = savedSettings.HideBeatmapList;
+        ServerPort = savedSettings.ServerPort is > 0 and < 65536 ? savedSettings.ServerPort : 5050;
         SelectedBeatmapSource = GetBeatmapSourceName(savedSettings.SelectedBeatmapSource);
         SelectedBeatmapSourceOption = BeatmapSourceOptions.FirstOrDefault(option => string.Equals(option.Value, SelectedBeatmapSource, StringComparison.OrdinalIgnoreCase));
         ServerRunning = BeatmapHttpServer.IsRunning;
@@ -208,8 +218,21 @@ public partial class MainViewModel : ViewModelBase
             SelectedBeatmaps.Add(entry);
         }
 
-        AppSettings.Save(SelectedFolder, EnableStartup, SelectedVersion, SelectedBeatmapSource, HideBeatmapList, SelectedBeatmaps.Select(entry => entry.Name));
+        AppSettings.Save(SelectedFolder, EnableStartup, SelectedVersion, SelectedBeatmapSource, HideBeatmapList, SelectedBeatmaps.Select(entry => entry.Name), ServerPort);
+        UpdateCustomLevelsSizeText();
         UpdateBeatmapJsonPreview();
+    }
+
+    public void UpdateServerPort(int port)
+    {
+        if (port is <= 0 or >= 65536)
+        {
+            return;
+        }
+
+        ServerPort = port;
+        AppSettings.Save(SelectedFolder, EnableStartup, SelectedVersion, SelectedBeatmapSource, HideBeatmapList, SelectedBeatmaps.Select(entry => entry.Name), port);
+        _ = BeatmapHttpServer.RestartAsync(port);
     }
 
     public void RefreshBeatmapEntries()
@@ -437,8 +460,10 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnHideBeatmapListChanged(bool value)
     {
+        OnPropertyChanged(nameof(SelectionEnabled));
         OnPropertyChanged(nameof(HideBeatmapListToggle));
         AppSettings.Save(SelectedFolder, EnableStartup, SelectedVersion, SelectedBeatmapSource, value);
+        UpdateCustomLevelsSizeText();
         UpdateBeatmapJsonPreview();
     }
 
@@ -514,20 +539,22 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        var candidateFolders = Directory.EnumerateDirectories(customLevelsPath);
-
-        if (string.Equals(SelectedBeatmapSource, "CustomWIPLevels", StringComparison.OrdinalIgnoreCase))
-        {
-            candidateFolders = candidateFolders.Where(folder => !ContainsAssetsFolder(folder));
-        }
+        var beatmapFolders = !HideBeatmapList && SelectedBeatmaps.Count > 0
+            ? SelectedBeatmaps
+            : BeatmapEntries;
 
         long totalBytes = 0;
-        foreach (var folderPath in candidateFolders)
+        foreach (var beatmap in beatmapFolders)
         {
+            var folderPath = Path.Combine(customLevelsPath, beatmap.Name);
+            if (!Directory.Exists(folderPath))
+            {
+                continue;
+            }
+
             foreach (var filePath in Directory.EnumerateFiles(folderPath, "*", SearchOption.AllDirectories))
             {
-                var fileInfo = new FileInfo(filePath);
-                totalBytes += fileInfo.Length;
+                totalBytes += new FileInfo(filePath).Length;
             }
         }
 

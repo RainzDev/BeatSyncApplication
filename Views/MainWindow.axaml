@@ -191,12 +191,26 @@
                                        Foreground="#9ab9d8"
                                        FontWeight="SemiBold"
                                        FontSize="14" />
-                            <TextBlock Grid.Row="1" Grid.Column="1"
-                                       Text="5050"
-                                       Foreground="#dff9ff"
-                                       FontWeight="SemiBold"
-                                       FontSize="12"
-                                       HorizontalAlignment="Left" />
+                            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding ServerPort}"
+                                           Foreground="#dff9ff"
+                                           FontWeight="SemiBold"
+                                           FontSize="12"
+                                           HorizontalAlignment="Left" />
+                                <Button Width="34"
+                                        Height="24"
+                                        Padding="0"
+                                        Click="EditPort_Click"
+                                        CornerRadius="6"
+                                        BorderBrush="#7dd3fc"
+                                        BorderThickness="1"
+                                        Background="#0c1d2b">
+                                    <Image Source="/Assets/image.png"
+                                           Width="12"
+                                           Height="12"
+                                           Stretch="Uniform" />
+                                </Button>
+                            </StackPanel>
                         </Grid>
                     </Border>
                 </StackPanel>
@@ -229,7 +243,7 @@
                                            FontWeight="SemiBold"
                                            VerticalAlignment="Center" />
 
-                                <ToggleSwitch IsChecked="{Binding HideBeatmapListToggle}"
+                                <ToggleSwitch IsChecked="{Binding SelectionEnabled}"
                                               OffContent=""
                                               OnContent=""
                                               Width="38"
@@ -262,7 +276,7 @@
                             <ListBox x:Name="BeatmapList"
                                      ItemsSource="{Binding FilteredBeatmapEntries}"
                                      IsVisible="{Binding !HideBeatmapList}"
-                                     SelectionMode="Toggle"
+                                     SelectionMode="Multiple,Toggle"
                                      Background="Transparent"
                                      BorderThickness="0"
                                      SelectionChanged="BeatmapList_SelectionChanged">
