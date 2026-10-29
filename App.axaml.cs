@@ -1,6 +1,8 @@
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 using BeatSync.ViewModels;
 using BeatSync.Views;
 
@@ -17,14 +19,27 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var viewModel = new MainViewModel();
-            desktop.MainWindow = new MainWindow
-            {
-                DataContext = viewModel,
-            };
+            var loadingWindow = new LoadingWindow();
+            loadingWindow.Show();
 
-            BeatmapHttpServer.Start();
-            desktop.MainWindow.Closed += (_, _) => BeatmapHttpServer.Stop();
+            _ = Task.Run(() =>
+            {
+                var viewModel = new MainViewModel();
+
+                Dispatcher.UIThread.Post(() =>
+                {
+                    var mainWindow = new MainWindow
+                    {
+                        DataContext = viewModel,
+                    };
+
+                    desktop.MainWindow = mainWindow;
+                    mainWindow.Show();
+                    BeatmapHttpServer.Start();
+                    mainWindow.Closed += (_, _) => BeatmapHttpServer.Stop();
+                    loadingWindow.Close();
+                });
+            });
         }
 
         base.OnFrameworkInitializationCompleted();

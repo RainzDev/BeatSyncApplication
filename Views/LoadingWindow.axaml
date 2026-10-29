@@ -1,0 +1,63 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="BeatSync.Views.LoadingWindow"
+        Title="Loading"
+        Width="420"
+        Height="260"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="False"
+        ExtendClientAreaToDecorationsHint="True"
+        WindowDecorations="None"
+        Background="#0a0d14">
+    <Grid RowDefinitions="*,Auto,Auto" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24">
+        <Border Grid.Row="0"
+                Width="84"
+                Height="84"
+                CornerRadius="18"
+                Background="#101b2b"
+                BorderBrush="#7dd3fc"
+                BorderThickness="1.2"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+            <Image Source="/Assets/logo.ico"
+                   Width="54"
+                   Height="54"
+                   Stretch="Uniform"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center">
+                <Image.RenderTransform>
+                    <RotateTransform Angle="0" />
+                </Image.RenderTransform>
+                <Image.Styles>
+                    <Style Selector="Image">
+                        <Style.Animations>
+                            <Animation Duration="0:0:1.2" IterationCount="Infinite">
+                                <KeyFrame Cue="0%">
+                                    <Setter Property="RotateTransform.Angle" Value="0" />
+                                </KeyFrame>
+                                <KeyFrame Cue="100%">
+                                    <Setter Property="RotateTransform.Angle" Value="360" />
+                                </KeyFrame>
+                            </Animation>
+                        </Style.Animations>
+                    </Style>
+                </Image.Styles>
+            </Image>
+        </Border>
+
+        <TextBlock Grid.Row="1"
+                   Text="Loading BeatSync..."
+                   FontSize="22"
+                   FontWeight="SemiBold"
+                   Foreground="#edf6ff"
+                   Margin="0,18,0,4"
+                   HorizontalAlignment="Center" />
+
+        <TextBlock Grid.Row="2"
+                   Text="Preparing beatmaps and settings"
+                   FontSize="12"
+                   Foreground="#9ab9d8"
+                   HorizontalAlignment="Center" />
+    </Grid>
+</Window>

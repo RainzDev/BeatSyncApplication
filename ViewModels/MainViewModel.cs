@@ -81,6 +81,8 @@ public partial class MainViewModel : ViewModelBase
 
     public ObservableCollection<BeatmapEntryViewModel> SelectedBeatmaps { get; } = new();
 
+    private readonly Dictionary<string, List<string>> _beatmapContentsCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, long> _beatmapSizeCache = new(StringComparer.OrdinalIgnoreCase);
     private DispatcherTimer? _selectionRefreshTimer;
 
     public ObservableCollection<BeatmapSourceOption> BeatmapSourceOptions { get; } = new()
@@ -123,7 +125,11 @@ public partial class MainViewModel : ViewModelBase
         }
 
         RefreshBeatmapEntries();
-        UpdateCustomLevelsSizeText();
+        Dispatcher.UIThread.Post(() =>
+        {
+            UpdateCustomLevelsSizeText();
+            UpdateBeatmapJsonPreview();
+        }, DispatcherPriority.Background);
         ApplyStartupSetting(EnableStartup);
     }
 
@@ -229,7 +235,7 @@ public partial class MainViewModel : ViewModelBase
     {
         _selectionRefreshTimer ??= new DispatcherTimer
         {
-            Interval = TimeSpan.FromMilliseconds(75),
+            Interval = TimeSpan.FromMilliseconds(150),
         };
 
         _selectionRefreshTimer.Stop();
@@ -259,6 +265,8 @@ public partial class MainViewModel : ViewModelBase
 
     public void RefreshBeatmapEntries()
     {
+        _beatmapContentsCache.Clear();
+        _beatmapSizeCache.Clear();
         BeatmapEntries.Clear();
         SelectedBeatmaps.Clear();
 
@@ -340,12 +348,21 @@ public partial class MainViewModel : ViewModelBase
             return new List<string>();
         }
 
-        return Directory.EnumerateFileSystemEntries(beatmapFolderPath)
+        var cacheKey = beatmapFolderPath;
+        if (_beatmapContentsCache.TryGetValue(cacheKey, out var cachedEntries))
+        {
+            return cachedEntries;
+        }
+
+        var entries = Directory.EnumerateFileSystemEntries(beatmapFolderPath)
             .Where(entry => ShouldIncludeBeatmapEntry(entry, beatmapFolderPath))
             .Select(entry => Path.GetFileName(entry) ?? string.Empty)
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        _beatmapContentsCache[cacheKey] = entries;
+        return entries;
     }
 
     private static bool ShouldIncludeBeatmapEntry(string path, string parentFolderPath)
@@ -573,10 +590,17 @@ public partial class MainViewModel : ViewModelBase
                 continue;
             }
 
-            foreach (var filePath in Directory.EnumerateFiles(folderPath, "*", SearchOption.AllDirectories))
+            if (_beatmapSizeCache.TryGetValue(folderPath, out var cachedSize))
             {
-                totalBytes += new FileInfo(filePath).Length;
+                totalBytes += cachedSize;
+                continue;
             }
+
+            var folderSize = Directory.EnumerateFiles(folderPath, "*", SearchOption.AllDirectories)
+                .Sum(filePath => new FileInfo(filePath).Length);
+
+            _beatmapSizeCache[folderPath] = folderSize;
+            totalBytes += folderSize;
         }
 
         var sizeInMb = totalBytes / (double)(1024 * 1024);
