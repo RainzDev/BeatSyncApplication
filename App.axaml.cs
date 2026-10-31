@@ -197,7 +197,7 @@ public partial class App : Application
 
         if (string.Equals(localHash, releaseHash, StringComparison.OrdinalIgnoreCase))
         {
-            loadingWindow.SetStatus("Fluxing the sabers currently");
+            loadingWindow.SetStatus("Setting up your beatmaps and settings");
             return UpdateStatus.UpToDate;
         }
 
