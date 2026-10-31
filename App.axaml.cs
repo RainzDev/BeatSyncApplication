@@ -9,8 +9,11 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Layout;
 using Avalonia.Markup.Xaml;
+using Avalonia.Media;
 using Avalonia.Threading;
 using BeatSync.ViewModels;
 using BeatSync.Views;
@@ -21,6 +24,9 @@ public partial class App : Application
 {
     // set to true to skip remote update checks during startup.
     private static bool BypassUpdateCheckerForTesting = false;
+
+    // set to true to force the update prompt during local testing without publishing a new release.
+    private static bool ForceUpdatePromptForTesting = false;
 
     public override void Initialize()
     {
@@ -56,6 +62,12 @@ public partial class App : Application
                     await Task.Delay(400);
                     updateStatus = UpdateStatus.UpToDate;
                 }
+                else if (ForceUpdatePromptForTesting)
+                {
+                    loadingWindow.SetStatus("Testing update prompt");
+                    await Task.Delay(400);
+                    updateStatus = UpdateStatus.UpdateAvailable;
+                }
                 else
                 {
                     updateStatus = await CheckForUpdatesAsync(loadingWindow);
@@ -73,22 +85,40 @@ public partial class App : Application
 
                 if (updateStatus == UpdateStatus.UpdateAvailable)
                 {
-                    try
-                    {
-                        await PerformAutoUpdateAsync(loadingWindow);
-                    }
-                    catch
-                    {
-                        loadingWindow.SetStatus("Update failed. Starting app...");
-                        await Task.Delay(1200);
-                    }
-
                     Dispatcher.UIThread.Post(() =>
                     {
-                        loadingWindow.Close();
-                        desktop.Shutdown();
+                        if (loadingWindow.IsVisible)
+                        {
+                            loadingWindow.Topmost = true;
+                            loadingWindow.Activate();
+                        }
                     });
-                    return;
+
+                    var shouldUpdate = await Dispatcher.UIThread.InvokeAsync(async () => await PromptForUpdateAsync(loadingWindow));
+                    if (!shouldUpdate)
+                    {
+                        loadingWindow.SetStatus("Update skipped. Starting app...");
+                        await Task.Delay(800);
+                    }
+                    else
+                    {
+                        try
+                        {
+                            await PerformAutoUpdateAsync(loadingWindow);
+                        }
+                        catch
+                        {
+                            loadingWindow.SetStatus("Update failed. Starting app...");
+                            await Task.Delay(1200);
+                        }
+
+                        Dispatcher.UIThread.Post(() =>
+                        {
+                            loadingWindow.Close();
+                            desktop.Shutdown();
+                        });
+                        return;
+                    }
                 }
 
                 var viewModel = new MainViewModel();
@@ -168,6 +198,13 @@ public partial class App : Application
 
         var json = await response.Content.ReadAsStringAsync();
         using var document = JsonDocument.Parse(json);
+        if (!TryValidateReleaseMetadata(document.RootElement, out var validationMessage))
+        {
+            loadingWindow.SetStatus(validationMessage);
+            await Task.Delay(1200);
+            return UpdateStatus.Failed;
+        }
+
         if (!document.RootElement.TryGetProperty("assets", out var assetsElement))
         {
             return UpdateStatus.Failed;
@@ -235,6 +272,11 @@ public partial class App : Application
 
         var releaseJson = await releaseResponse.Content.ReadAsStringAsync();
         using var releaseDocument = JsonDocument.Parse(releaseJson);
+        if (!TryValidateReleaseMetadata(releaseDocument.RootElement, out var validationMessage))
+        {
+            throw new InvalidOperationException(validationMessage);
+        }
+
         if (!releaseDocument.RootElement.TryGetProperty("assets", out var assetsElement))
         {
             throw new InvalidOperationException("Release asset list missing.");
@@ -295,6 +337,202 @@ public partial class App : Application
 
         loadingWindow.SetStatus("Restarting to finish update...");
         await Task.Delay(1200);
+    }
+
+    private static async Task<bool> PromptForUpdateAsync(LoadingWindow loadingWindow)
+    {
+        var shouldHideLoadingWindow = false;
+        Dispatcher.UIThread.Invoke(() =>
+        {
+            if (loadingWindow.IsVisible)
+            {
+                loadingWindow.Hide();
+                shouldHideLoadingWindow = true;
+            }
+        });
+
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell",
+                    Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"[System.Windows.Forms.MessageBox]::Show('A newer version is available. Would you like to download and install the update now?', 'Update available', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question) -eq [System.Windows.Forms.DialogResult]::Yes\"",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    WorkingDirectory = AppContext.BaseDirectory,
+                };
+
+                using var process = Process.Start(psi);
+                if (process is null)
+                {
+                    return await ShowFallbackDialogAsync(loadingWindow);
+                }
+
+                await process.WaitForExitAsync();
+                return process.ExitCode == 0;
+            }
+
+            if (OperatingSystem.IsLinux())
+            {
+                var dialogCommands = new[]
+                {
+                    new[] { "zenity", "--question --title=\"Update available\" --text=\"A newer version is available. Would you like to download and install the update now?\" --ok-label=Yes --cancel-label=No" },
+                    new[] { "kdialog", "--yesno \"A newer version is available. Would you like to download and install the update now?\"" },
+                };
+
+                foreach (var command in dialogCommands)
+                {
+                    var fileName = command[0];
+                    var arguments = command[1];
+                    var commandPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+                    if (string.IsNullOrWhiteSpace(commandPath) || !commandPath.Split(Path.PathSeparator).Any(path => File.Exists(Path.Combine(path, fileName))))
+                    {
+                        continue;
+                    }
+
+                    var psi = new ProcessStartInfo
+                    {
+                        FileName = fileName,
+                        Arguments = arguments,
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        WorkingDirectory = AppContext.BaseDirectory,
+                    };
+
+                    using var process = Process.Start(psi);
+                    if (process is null)
+                    {
+                        continue;
+                    }
+
+                    await process.WaitForExitAsync();
+                    return process.ExitCode == 0;
+                }
+            }
+
+            return await ShowFallbackDialogAsync(loadingWindow);
+        }
+        finally
+        {
+            if (shouldHideLoadingWindow)
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (!loadingWindow.IsVisible)
+                    {
+                        loadingWindow.Show();
+                        loadingWindow.Topmost = true;
+                        loadingWindow.Activate();
+                    }
+                });
+            }
+        }
+    }
+
+    private static async Task<bool> ShowFallbackDialogAsync(LoadingWindow loadingWindow)
+    {
+        var dialog = new Window
+        {
+            Title = "Update available",
+            Width = 440,
+            Height = 210,
+            CanResize = false,
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Topmost = true,
+        };
+
+        var header = new TextBlock
+        {
+            Text = "A newer version is available.",
+            FontSize = 20,
+            FontWeight = FontWeight.Bold,
+            Margin = new Thickness(0, 0, 0, 10),
+        };
+
+        var message = new TextBlock
+        {
+            Text = "Would you like to download and install the update now? The current version will remain in place if you choose No.",
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 16),
+        };
+
+        var noButton = new Button
+        {
+            Content = "No",
+            Width = 110,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+        };
+
+        var yesButton = new Button
+        {
+            Content = "Yes",
+            Width = 110,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+        };
+
+        var actions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Spacing = 12,
+            Children = { noButton, yesButton },
+        };
+
+        var content = new StackPanel
+        {
+            Margin = new Thickness(18),
+            Children = { header, message, actions },
+        };
+
+        dialog.Content = content;
+        noButton.Click += (_, _) => dialog.Close(false);
+        yesButton.Click += (_, _) => dialog.Close(true);
+
+        var result = await dialog.ShowDialog<bool?>(loadingWindow);
+        return result == true;
+    }
+
+    private static bool TryValidateReleaseMetadata(JsonElement releaseElement, out string validationMessage)
+    {
+        validationMessage = string.Empty;
+
+        var isImmutable = releaseElement.TryGetProperty("immutable", out var immutableElement) &&
+            immutableElement.ValueKind == JsonValueKind.True;
+
+        var hasAttestation = releaseElement.TryGetProperty("attestations", out var attestationElement) &&
+            attestationElement.ValueKind == JsonValueKind.Array &&
+            attestationElement.GetArrayLength() > 0;
+
+        if (!hasAttestation && releaseElement.TryGetProperty("verification", out var verificationElement))
+        {
+            hasAttestation = verificationElement.TryGetProperty("verified_at", out _) ||
+                verificationElement.TryGetProperty("verified_by", out _);
+        }
+
+        if (!hasAttestation && releaseElement.TryGetProperty("body", out var bodyElement))
+        {
+            var body = bodyElement.GetString();
+            hasAttestation = body is not null && body.Contains("attestation", StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (!isImmutable)
+        {
+            validationMessage = "GitHub release is not marked immutable. Update aborted for safety.";
+            return false;
+        }
+
+        if (!hasAttestation)
+        {
+            validationMessage = "GitHub release has no attestation metadata. Update aborted for safety.";
+            return false;
+        }
+
+        return true;
     }
 
     private static string CreateRestartUpdater(string targetBinary, string replacementBinary, string binaryName)

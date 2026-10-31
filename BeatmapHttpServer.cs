@@ -191,7 +191,7 @@ public static class BeatmapHttpServer
 
         var selectedVersion = settings.SelectedVersion;
         var versionFolders = Directory.EnumerateDirectories(selectedFolder)
-            .Where(versionFolder => File.Exists(Path.Combine(versionFolder, OperatingSystem.IsWindows() ? "Beat Saber.exe" : "Beat Saber")))
+            .Where(versionFolder => !string.IsNullOrWhiteSpace(MainViewModel.GetBeatSaberExecutablePath(versionFolder)))
             .OrderBy(versionFolder => Path.GetFileName(versionFolder), StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -370,7 +370,7 @@ public static class BeatmapHttpServer
         if (string.IsNullOrWhiteSpace(selectedVersion))
         {
             var versionFolders = Directory.EnumerateDirectories(selectedFolder)
-                .Where(versionFolder => File.Exists(Path.Combine(versionFolder, OperatingSystem.IsWindows() ? "Beat Saber.exe" : "Beat Saber")))
+                .Where(versionFolder => !string.IsNullOrWhiteSpace(MainViewModel.GetBeatSaberExecutablePath(versionFolder)))
                 .OrderBy(versionFolder => Path.GetFileName(versionFolder), StringComparer.OrdinalIgnoreCase)
                 .ToList();
 

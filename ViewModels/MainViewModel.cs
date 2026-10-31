@@ -434,6 +434,19 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    public static string? GetBeatSaberExecutablePath(string versionFolder)
+    {
+        var candidates = new[]
+        {
+            Path.Combine(versionFolder, "Beat Saber.exe"),
+            Path.Combine(versionFolder, "Beat Saber"),
+            Path.Combine(versionFolder, "Beat Saber.x86_64"),
+            Path.Combine(versionFolder, "Beat Saber.x86_64.bin"),
+        };
+
+        return candidates.FirstOrDefault(File.Exists);
+    }
+
     public void RefreshVersionOptions()
     {
         VersionOptions.Clear();
@@ -448,9 +461,9 @@ public partial class MainViewModel : ViewModelBase
             .Select(folder => new
             {
                 FolderName = Path.GetFileName(folder),
-                BeatSaberExe = Path.Combine(folder, OperatingSystem.IsWindows() ? "Beat Saber.exe" : "Beat Saber"),
+                BeatSaberExe = GetBeatSaberExecutablePath(folder),
             })
-            .Where(x => File.Exists(x.BeatSaberExe))
+            .Where(x => !string.IsNullOrWhiteSpace(x.BeatSaberExe))
             .Select(x => x.FolderName)
             .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
             .ToList();
