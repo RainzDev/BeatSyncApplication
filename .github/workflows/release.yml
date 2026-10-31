@@ -162,9 +162,10 @@ jobs:
       - name: Mark GitHub release as immutable
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.release_meta.outputs.tag_name }}
         shell: bash
         run: |
-          RELEASE_ID=$(gh release view "${{ steps.release_meta.outputs.tag_name }}" --json id --jq '.id')
+          RELEASE_ID=$(gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --json id --jq '.id')
           gh api \
             --method PATCH \
             -H "Accept: application/vnd.github+json" \
