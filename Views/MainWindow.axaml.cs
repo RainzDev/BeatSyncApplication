@@ -121,6 +121,7 @@ public partial class MainWindow : Window
         var dialog = new Window
         {
             Title = "Edit server port",
+            WindowDecorations = Avalonia.Controls.WindowDecorations.None,
             Width = 240,
             Height = 160,
             CanResize = false,

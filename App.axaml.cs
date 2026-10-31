@@ -19,6 +19,9 @@ namespace BeatSync;
 
 public partial class App : Application
 {
+    // set to true to skip remote update checks during startup.
+    private static bool BypassUpdateCheckerForTesting = false;
+
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
@@ -46,7 +49,17 @@ public partial class App : Application
 
             _ = Task.Run(async () =>
             {
-                var updateStatus = await CheckForUpdatesAsync(loadingWindow);
+                UpdateStatus updateStatus;
+                if (BypassUpdateCheckerForTesting)
+                {
+                    loadingWindow.SetStatus("Update check bypassed for testing");
+                    await Task.Delay(400);
+                    updateStatus = UpdateStatus.UpToDate;
+                }
+                else
+                {
+                    updateStatus = await CheckForUpdatesAsync(loadingWindow);
+                }
 
                 if (updateStatus == UpdateStatus.Failed)
                 {
