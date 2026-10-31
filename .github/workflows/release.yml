@@ -165,9 +165,30 @@ jobs:
           TAG_NAME: ${{ steps.release_meta.outputs.tag_name }}
         shell: bash
         run: |
-          RELEASE_ID=$(gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --json id --jq '.id')
+          RELEASE_ID=""
+
+          for attempt in $(seq 1 10); do
+            RELEASE_ID=$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG_NAME}" \
+              --jq '.id' 2>/dev/null || true)
+
+            if [[ -n "$RELEASE_ID" && "$RELEASE_ID" != "null" ]]; then
+              break
+            fi
+
+            echo "Release for tag ${TAG_NAME} is not visible yet (attempt ${attempt}/10). Waiting 5s..."
+            sleep 5
+          done
+
+          if [[ -z "$RELEASE_ID" || "$RELEASE_ID" == "null" ]]; then
+            echo "Release for tag ${TAG_NAME} could not be found after retries."
+            gh release list --limit 20 --repo "$GITHUB_REPOSITORY" || true
+            exit 1
+          fi
+
           gh api \
             --method PATCH \
             -H "Accept: application/vnd.github+json" \
-            "/repos/${{ github.repository }}/releases/${RELEASE_ID}" \
+            "/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
             -f immutable=true
