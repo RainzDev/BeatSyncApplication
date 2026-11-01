@@ -205,11 +205,10 @@ jobs:
           echo "Current release immutable=${CURRENT_IMMUTABLE}"
 
           if [[ "$CURRENT_IMMUTABLE" != "true" ]]; then
-            echo "Failed to mark release immutable. Check repository permissions or API support for immutable releases."
+            echo "Warning: release immutable flag is still false. Continuing with attestation-based verification."
             gh api \
               -H "Accept: application/vnd.github+json" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
               "/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
               --jq '{id, tag_name, immutable, draft, prerelease, created_at, published_at}'
-            exit 1
           fi

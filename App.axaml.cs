@@ -215,19 +215,71 @@ public partial class App : Application
             return UpdateStatus.Failed;
         }
 
+        if (!TryGetManifestAsset(assetsElement, out var manifestAssetElement))
+        {
+            loadingWindow.SetStatus("Release manifest missing. Update aborted for safety.");
+            await Task.Delay(1200);
+            return UpdateStatus.Failed;
+        }
+
+        if (!TryGetAssetDigestSha256(assetElement, out var expectedAssetDigest))
+        {
+            loadingWindow.SetStatus("Release asset digest missing. Update aborted for safety.");
+            await Task.Delay(1200);
+            return UpdateStatus.Failed;
+        }
+
         var assetUrl = assetElement.GetProperty("browser_download_url").GetString();
         if (string.IsNullOrWhiteSpace(assetUrl))
         {
             return UpdateStatus.Failed;
         }
 
-        using var zipResponse = await client.GetAsync(assetUrl);
-        if (!zipResponse.IsSuccessStatusCode)
+        var manifestUrl = manifestAssetElement.GetProperty("browser_download_url").GetString();
+        if (string.IsNullOrWhiteSpace(manifestUrl))
+        {
+            loadingWindow.SetStatus("Release manifest URL missing. Update aborted for safety.");
+            await Task.Delay(1200);
+            return UpdateStatus.Failed;
+        }
+
+        var releaseTag = document.RootElement.TryGetProperty("tag_name", out var tagElement)
+            ? tagElement.GetString() ?? string.Empty
+            : string.Empty;
+
+        var assetName = assetElement.GetProperty("name").GetString();
+        if (string.IsNullOrWhiteSpace(assetName))
         {
             return UpdateStatus.Failed;
         }
 
-        await using var zipStream = await zipResponse.Content.ReadAsStreamAsync();
+        var manifestJson = await client.GetStringAsync(manifestUrl);
+        if (!TryValidateReleaseManifest(manifestJson, releaseTag, assetName, out var expectedManifestAssetHash, out var manifestValidationMessage))
+        {
+            loadingWindow.SetStatus(manifestValidationMessage);
+            await Task.Delay(1200);
+            return UpdateStatus.Failed;
+        }
+
+        var zipBytes = await client.GetByteArrayAsync(assetUrl);
+        using var zipHashStream = new MemoryStream(zipBytes, writable: false);
+        var downloadedZipHash = ComputeSha256(zipHashStream);
+
+        if (!string.Equals(downloadedZipHash, expectedManifestAssetHash, StringComparison.OrdinalIgnoreCase))
+        {
+            loadingWindow.SetStatus("Release manifest hash mismatch. Update aborted for safety.");
+            await Task.Delay(1200);
+            return UpdateStatus.Failed;
+        }
+
+        if (!string.Equals(downloadedZipHash, expectedAssetDigest, StringComparison.OrdinalIgnoreCase))
+        {
+            loadingWindow.SetStatus("Release digest mismatch. Update aborted for safety.");
+            await Task.Delay(1200);
+            return UpdateStatus.Failed;
+        }
+
+        await using var zipStream = new MemoryStream(zipBytes, writable: false);
         using var archive = new ZipArchive(zipStream, ZipArchiveMode.Read, leaveOpen: false);
 
         var binaryName = GetCurrentBinaryFileName();
@@ -287,26 +339,62 @@ public partial class App : Application
             throw new InvalidOperationException("No matching release asset found for this platform.");
         }
 
+        if (!TryGetManifestAsset(assetsElement, out var manifestAssetElement))
+        {
+            throw new InvalidOperationException("Release manifest missing.");
+        }
+
+        if (!TryGetAssetDigestSha256(assetElement, out var expectedAssetDigest))
+        {
+            throw new InvalidOperationException("Release asset digest missing.");
+        }
+
         var assetUrl = assetElement.GetProperty("browser_download_url").GetString();
         if (string.IsNullOrWhiteSpace(assetUrl))
         {
             throw new InvalidOperationException("Release asset URL missing.");
         }
 
+        var manifestUrl = manifestAssetElement.GetProperty("browser_download_url").GetString();
+        if (string.IsNullOrWhiteSpace(manifestUrl))
+        {
+            throw new InvalidOperationException("Release manifest URL missing.");
+        }
+
+        var releaseTag = releaseDocument.RootElement.TryGetProperty("tag_name", out var tagElement)
+            ? tagElement.GetString() ?? string.Empty
+            : string.Empty;
+
+        var assetName = assetElement.GetProperty("name").GetString();
+        if (string.IsNullOrWhiteSpace(assetName))
+        {
+            throw new InvalidOperationException("Release asset name missing.");
+        }
+
+        var manifestJson = await client.GetStringAsync(manifestUrl);
+        if (!TryValidateReleaseManifest(manifestJson, releaseTag, assetName, out var expectedManifestAssetHash, out var manifestValidationMessage))
+        {
+            throw new InvalidOperationException(manifestValidationMessage);
+        }
+
+        var zipBytes = await client.GetByteArrayAsync(assetUrl);
+        using var zipHashStream = new MemoryStream(zipBytes, writable: false);
+        var downloadedZipHash = ComputeSha256(zipHashStream);
+        if (!string.Equals(downloadedZipHash, expectedManifestAssetHash, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Release manifest hash mismatch.");
+        }
+
+        if (!string.Equals(downloadedZipHash, expectedAssetDigest, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Release digest mismatch.");
+        }
+
         var tempRoot = Path.Combine(Path.GetTempPath(), "BeatSyncUpdate" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempRoot);
 
         var zipPath = Path.Combine(tempRoot, "update.zip");
-        using (var downloadResponse = await client.GetAsync(assetUrl))
-        {
-            if (!downloadResponse.IsSuccessStatusCode)
-            {
-                throw new InvalidOperationException("Failed to download update package.");
-            }
-
-            await using var destinationStream = File.Create(zipPath);
-            await downloadResponse.Content.CopyToAsync(destinationStream);
-        }
+        await File.WriteAllBytesAsync(zipPath, zipBytes);
 
         var extractedPath = Path.Combine(tempRoot, "extracted");
         Directory.CreateDirectory(extractedPath);
@@ -520,16 +608,17 @@ public partial class App : Application
             hasAttestation = body is not null && body.Contains("attestation", StringComparison.OrdinalIgnoreCase);
         }
 
-        if (!isImmutable)
-        {
-            validationMessage = "GitHub release is not marked immutable. Update aborted for safety.";
-            return false;
-        }
-
         if (!hasAttestation)
         {
             validationMessage = "GitHub release has no attestation metadata. Update aborted for safety.";
             return false;
+        }
+
+        if (!isImmutable)
+        {
+            // GitHub exposes this field but does not reliably allow setting it for all release flows.
+            // Continue with attestation + hash validation instead of blocking startup.
+            validationMessage = "GitHub immutable flag is unavailable for this release. Continuing with attestation and hash checks.";
         }
 
         return true;
@@ -608,6 +697,114 @@ public partial class App : Application
 
         assetElement = default;
         return false;
+    }
+
+    private static bool TryGetManifestAsset(JsonElement assetsElement, out JsonElement manifestAssetElement)
+    {
+        foreach (var asset in assetsElement.EnumerateArray())
+        {
+            var name = asset.TryGetProperty("name", out var nameElement) ? nameElement.GetString() : null;
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                continue;
+            }
+
+            if (string.Equals(name, "release-manifest.json", StringComparison.OrdinalIgnoreCase))
+            {
+                manifestAssetElement = asset;
+                return true;
+            }
+        }
+
+        manifestAssetElement = default;
+        return false;
+    }
+
+    private static bool TryGetAssetDigestSha256(JsonElement assetElement, out string sha256Digest)
+    {
+        sha256Digest = string.Empty;
+        if (!assetElement.TryGetProperty("digest", out var digestElement))
+        {
+            return false;
+        }
+
+        var digest = digestElement.GetString();
+        if (string.IsNullOrWhiteSpace(digest))
+        {
+            return false;
+        }
+
+        const string prefix = "sha256:";
+        if (!digest.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        sha256Digest = digest[prefix.Length..].Trim().ToLowerInvariant();
+        return sha256Digest.Length > 0;
+    }
+
+    private static bool TryValidateReleaseManifest(
+        string manifestJson,
+        string releaseTag,
+        string assetName,
+        out string expectedAssetHash,
+        out string validationMessage)
+    {
+        expectedAssetHash = string.Empty;
+        validationMessage = string.Empty;
+
+        try
+        {
+            using var manifestDocument = JsonDocument.Parse(manifestJson);
+            var manifestRoot = manifestDocument.RootElement;
+
+            if (!manifestRoot.TryGetProperty("tag_name", out var tagElement))
+            {
+                validationMessage = "Release manifest missing tag_name. Update aborted for safety.";
+                return false;
+            }
+
+            var manifestTag = tagElement.GetString();
+            if (string.IsNullOrWhiteSpace(manifestTag) || !string.Equals(manifestTag, releaseTag, StringComparison.OrdinalIgnoreCase))
+            {
+                validationMessage = "Release manifest tag mismatch. Update aborted for safety.";
+                return false;
+            }
+
+            if (!manifestRoot.TryGetProperty("artifacts", out var artifactsElement) || artifactsElement.ValueKind != JsonValueKind.Array)
+            {
+                validationMessage = "Release manifest artifacts are missing. Update aborted for safety.";
+                return false;
+            }
+
+            foreach (var artifact in artifactsElement.EnumerateArray())
+            {
+                var name = artifact.TryGetProperty("name", out var artifactNameElement) ? artifactNameElement.GetString() : null;
+                if (!string.Equals(name, assetName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var hash = artifact.TryGetProperty("sha256", out var hashElement) ? hashElement.GetString() : null;
+                if (string.IsNullOrWhiteSpace(hash))
+                {
+                    validationMessage = "Release manifest hash is missing. Update aborted for safety.";
+                    return false;
+                }
+
+                expectedAssetHash = hash.Trim().ToLowerInvariant();
+                return true;
+            }
+
+            validationMessage = "Release asset missing from release manifest. Update aborted for safety.";
+            return false;
+        }
+        catch
+        {
+            validationMessage = "Release manifest is invalid JSON. Update aborted for safety.";
+            return false;
+        }
     }
 
     private static string GetCurrentBinaryFileName()
