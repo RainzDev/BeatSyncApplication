@@ -592,33 +592,11 @@ public partial class App : Application
         var isImmutable = releaseElement.TryGetProperty("immutable", out var immutableElement) &&
             immutableElement.ValueKind == JsonValueKind.True;
 
-        var hasAttestation = releaseElement.TryGetProperty("attestations", out var attestationElement) &&
-            attestationElement.ValueKind == JsonValueKind.Array &&
-            attestationElement.GetArrayLength() > 0;
-
-        if (!hasAttestation && releaseElement.TryGetProperty("verification", out var verificationElement))
-        {
-            hasAttestation = verificationElement.TryGetProperty("verified_at", out _) ||
-                verificationElement.TryGetProperty("verified_by", out _);
-        }
-
-        if (!hasAttestation && releaseElement.TryGetProperty("body", out var bodyElement))
-        {
-            var body = bodyElement.GetString();
-            hasAttestation = body is not null && body.Contains("attestation", StringComparison.OrdinalIgnoreCase);
-        }
-
-        if (!hasAttestation)
-        {
-            validationMessage = "GitHub release has no attestation metadata. Update aborted for safety.";
-            return false;
-        }
-
         if (!isImmutable)
         {
             // GitHub exposes this field but does not reliably allow setting it for all release flows.
-            // Continue with attestation + hash validation instead of blocking startup.
-            validationMessage = "GitHub immutable flag is unavailable for this release. Continuing with attestation and hash checks.";
+            // Continue with manifest-attestation + hash validation instead of blocking startup.
+            validationMessage = "GitHub immutable flag is unavailable for this release. Continuing with manifest attestation and hash checks.";
         }
 
         return true;
@@ -769,6 +747,31 @@ public partial class App : Application
             if (string.IsNullOrWhiteSpace(manifestTag) || !string.Equals(manifestTag, releaseTag, StringComparison.OrdinalIgnoreCase))
             {
                 validationMessage = "Release manifest tag mismatch. Update aborted for safety.";
+                return false;
+            }
+
+            if (!manifestRoot.TryGetProperty("attestation", out var attestationElement) || attestationElement.ValueKind != JsonValueKind.Object)
+            {
+                validationMessage = "Release manifest attestation is missing. Update aborted for safety.";
+                return false;
+            }
+
+            var provider = attestationElement.TryGetProperty("provider", out var providerElement)
+                ? providerElement.GetString()
+                : null;
+
+            var source = attestationElement.TryGetProperty("source", out var sourceElement)
+                ? sourceElement.GetString()
+                : null;
+
+            var verified = attestationElement.TryGetProperty("verified", out var verifiedElement) &&
+                verifiedElement.ValueKind == JsonValueKind.True;
+
+            if (!verified ||
+                !string.Equals(provider, "github-actions", StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(source, "actions/attest-build-provenance", StringComparison.OrdinalIgnoreCase))
+            {
+                validationMessage = "Release manifest attestation is invalid. Update aborted for safety.";
                 return false;
             }
 
