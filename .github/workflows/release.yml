@@ -187,8 +187,29 @@ jobs:
             exit 1
           fi
 
-          gh api \
+          PATCH_IMMUTABLE=$(gh api \
             --method PATCH \
             -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
             "/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
-            -f immutable=true
+            -f immutable=true \
+            --jq '.immutable')
+
+          CURRENT_IMMUTABLE=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+            --jq '.immutable')
+
+          echo "PATCH response immutable=${PATCH_IMMUTABLE}"
+          echo "Current release immutable=${CURRENT_IMMUTABLE}"
+
+          if [[ "$CURRENT_IMMUTABLE" != "true" ]]; then
+            echo "Failed to mark release immutable. Check repository permissions or API support for immutable releases."
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+              --jq '{id, tag_name, immutable, draft, prerelease, created_at, published_at}'
+            exit 1
+          fi
