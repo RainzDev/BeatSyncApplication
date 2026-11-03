@@ -661,17 +661,25 @@ public partial class App : Application
     public static string BuildWindowsUpdaterScript(string targetBinary, string replacementRoot, string binaryName)
     {
         var appDirectory = Path.GetDirectoryName(targetBinary) ?? Directory.GetCurrentDirectory();
+        var appName = Path.GetFileName(appDirectory);
         var backupDirectory = appDirectory + ".bak";
+
         var script = $"@echo off\r\n" +
                      $"setlocal\r\n" +
-                     $"ping -n 4 127.0.0.1 > nul\r\n" +
                      $"set \"TARGET={targetBinary}\"\r\n" +
-                     $"set \"APP_DIR={appDirectory}\\\"\r\n" +
+                     $"set \"APP_DIR={appDirectory}\"\r\n" +
+                     $"set \"APP_NAME={appName}\"\r\n" +
                      $"set \"STAGED_DIR={replacementRoot}\"\r\n" +
                      $"set \"BACKUP_DIR={backupDirectory}\"\r\n" +
+                     $":wait_for_exit\r\n" +
+                     $"tasklist /FI \"IMAGENAME eq {binaryName}\" 2>NUL | find /I \"{binaryName}\" >NUL\r\n" +
+                     $"if not errorlevel 1 (\r\n" +
+                     $"  timeout /t 2 /nobreak >nul\r\n" +
+                     $"  goto wait_for_exit\r\n" +
+                     $")\r\n" +
                      $"if exist \"%BACKUP_DIR%\" rmdir /s /q \"%BACKUP_DIR%\"\r\n" +
-                     $"robocopy \"%STAGED_DIR%\" \"%APP_DIR%\" /E /COPY:DAT /DCOPY:DAT /R:1 /W:1 > nul\r\n" +
-                     $"if not exist \"%TARGET%\" start \"\" \"%TARGET%\"\r\n" +
+                     $"if exist \"%APP_DIR%\" ren \"%APP_DIR%\" \"%APP_NAME%.bak\"\r\n" +
+                     $"move /Y \"%STAGED_DIR%\" \"%APP_DIR%\" >nul\r\n" +
                      $"start \"\" \"%TARGET%\"\r\n" +
                      $"exit /b 0\r\n";
 
