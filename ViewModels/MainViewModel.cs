@@ -95,6 +95,7 @@ public partial class MainViewModel : ViewModelBase
     public MainViewModel()
     {
         var savedSettings = AppSettings.Load();
+        AppLogger.Info("MainViewModel initialization started.");
 
         if (!string.IsNullOrWhiteSpace(savedSettings.SelectedFolder))
         {
@@ -131,6 +132,7 @@ public partial class MainViewModel : ViewModelBase
             UpdateBeatmapJsonPreview();
         }, DispatcherPriority.Background);
         ApplyStartupSetting(EnableStartup);
+        AppLogger.Info($"MainViewModel initialization completed. Folder={SelectedFolder}, Version={SelectedVersion ?? "<none>"}, Source={SelectedBeatmapSource}, Port={ServerPort}");
     }
 
     public static string GetDefaultSelectedFolder()
@@ -145,16 +147,19 @@ public partial class MainViewModel : ViewModelBase
 
             if (!string.IsNullOrWhiteSpace(appData))
             {
+                candidates.Add(Path.Combine(appData, "encore"));
                 candidates.Add(Path.Combine(appData, "BSManager", "BSInstances"));
             }
 
             if (!string.IsNullOrWhiteSpace(localAppData))
             {
+                candidates.Add(Path.Combine(localAppData, "encore"));
                 candidates.Add(Path.Combine(localAppData, "BSManager", "BSInstances"));
             }
 
             if (!string.IsNullOrWhiteSpace(homePath))
             {
+                candidates.Add(Path.Combine(homePath, "encore"));
                 candidates.Add(Path.Combine(homePath, "BSManager", "BSInstances"));
             }
         }
@@ -162,6 +167,9 @@ public partial class MainViewModel : ViewModelBase
         {
             if (!string.IsNullOrWhiteSpace(homePath))
             {
+                candidates.Add(Path.Combine(homePath, ".local", "share", "encore"));
+                candidates.Add(Path.Combine(homePath, ".config", "encore"));
+                candidates.Add(Path.Combine(homePath, "encore"));
                 candidates.Add(Path.Combine(homePath, ".local", "share", "BSManager", "BSInstances"));
                 candidates.Add(Path.Combine(homePath, ".config", "BSManager", "BSInstances"));
                 candidates.Add(Path.Combine(homePath, "BSManager", "BSInstances"));
@@ -209,9 +217,11 @@ public partial class MainViewModel : ViewModelBase
     {
         if (string.IsNullOrWhiteSpace(folderPath))
         {
+            AppLogger.Warn("SaveSelectedFolder called with empty folder path.");
             return;
         }
 
+        AppLogger.Info($"Folder selection updated. Folder={folderPath}");
         SelectedFolder = folderPath;
         RefreshVersionOptions();
         RefreshBeatmapEntries();
@@ -255,16 +265,20 @@ public partial class MainViewModel : ViewModelBase
     {
         if (port is <= 0 or >= 65536)
         {
+            AppLogger.Warn($"Rejected server port update. Port={port}");
             return;
         }
 
+        var previousPort = ServerPort;
         ServerPort = port;
+        AppLogger.Info($"Server port updated. PreviousPort={previousPort}, NewPort={port}");
         AppSettings.Save(SelectedFolder, EnableStartup, SelectedVersion, SelectedBeatmapSource, HideBeatmapList, SelectedBeatmaps.Select(entry => entry.Name), port);
         _ = BeatmapHttpServer.RestartAsync(port);
     }
 
     public void RefreshBeatmapEntries()
     {
+        AppLogger.Info($"Refreshing beatmap entries. Folder={SelectedFolder}, Version={SelectedVersion ?? "<none>"}, Source={SelectedBeatmapSource}");
         _beatmapContentsCache.Clear();
         _beatmapSizeCache.Clear();
         BeatmapEntries.Clear();
@@ -272,6 +286,7 @@ public partial class MainViewModel : ViewModelBase
 
         if (string.IsNullOrWhiteSpace(SelectedFolder) || string.IsNullOrWhiteSpace(SelectedVersion) || !Directory.Exists(SelectedFolder))
         {
+            AppLogger.Warn("Beatmap refresh skipped due to missing folder or version.");
             OnPropertyChanged(nameof(FilteredBeatmapEntries));
             BeatmapJsonPreview = "{}";
             return;
@@ -280,6 +295,7 @@ public partial class MainViewModel : ViewModelBase
         var beatmapRootPath = GetBeatmapRootPath(SelectedFolder, SelectedVersion, SelectedBeatmapSource);
         if (!Directory.Exists(beatmapRootPath))
         {
+            AppLogger.Warn($"Beatmap root path not found. Path={beatmapRootPath}");
             OnPropertyChanged(nameof(FilteredBeatmapEntries));
             BeatmapJsonPreview = "{}";
             return;
@@ -301,6 +317,7 @@ public partial class MainViewModel : ViewModelBase
 
         OnPropertyChanged(nameof(FilteredBeatmapEntries));
         UpdateBeatmapJsonPreview();
+        AppLogger.Info($"Beatmap refresh completed. Count={BeatmapEntries.Count}, Root={beatmapRootPath}");
     }
 
     private void UpdateBeatmapJsonPreview()
@@ -449,11 +466,13 @@ public partial class MainViewModel : ViewModelBase
 
     public void RefreshVersionOptions()
     {
+        AppLogger.Info($"Refreshing version options. Folder={SelectedFolder}");
         VersionOptions.Clear();
 
         if (string.IsNullOrWhiteSpace(SelectedFolder) || !Directory.Exists(SelectedFolder))
         {
             SelectedVersion = null;
+            AppLogger.Warn("Version refresh skipped because selected folder is unavailable.");
             return;
         }
 
@@ -477,6 +496,8 @@ public partial class MainViewModel : ViewModelBase
         {
             SelectedVersion = VersionOptions.FirstOrDefault();
         }
+
+        AppLogger.Info($"Version refresh completed. Count={VersionOptions.Count}, Selected={SelectedVersion ?? "<none>"}");
     }
 
     partial void OnSelectedVersionChanged(string? value)
@@ -654,27 +675,32 @@ public partial class MainViewModel : ViewModelBase
     private static void ApplyStartupSetting(bool enableStartup)
     {
         var executablePath = Environment.ProcessPath ?? AppContext.BaseDirectory;
+        AppLogger.Info($"Applying startup setting. Enabled={enableStartup}, Executable={executablePath}");
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             using var runKey = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
             if (runKey is null)
             {
+                AppLogger.Warn("Failed to open Windows startup registry key.");
                 return;
             }
 
             if (enableStartup)
             {
                 runKey.SetValue("BeatSync", $"\"{executablePath}\"");
+                AppLogger.Info("Windows startup registration created.");
                 return;
             }
 
             runKey.DeleteValue("BeatSync", false);
+            AppLogger.Info("Windows startup registration removed.");
             return;
         }
 
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
+            AppLogger.Warn("Startup setting skipped: unsupported operating system.");
             return;
         }
 
@@ -693,12 +719,14 @@ public partial class MainViewModel : ViewModelBase
                               "X-GNOME-Autostart-enabled=true\n";
 
             File.WriteAllText(desktopFilePath, desktopFile);
+            AppLogger.Info($"Linux startup desktop entry written. Path={desktopFilePath}");
             return;
         }
 
         if (File.Exists(desktopFilePath))
         {
             File.Delete(desktopFilePath);
+            AppLogger.Info($"Linux startup desktop entry removed. Path={desktopFilePath}");
         }
     }
 }

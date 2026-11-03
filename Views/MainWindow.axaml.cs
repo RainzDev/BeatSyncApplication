@@ -198,16 +198,19 @@ public partial class MainWindow : Window
 
             if (!string.IsNullOrWhiteSpace(appData))
             {
+                candidates.Add(Path.Combine(appData, "encore"));
                 candidates.Add(Path.Combine(appData, "BSManager", "BSInstances"));
             }
 
             if (!string.IsNullOrWhiteSpace(localAppData))
             {
+                candidates.Add(Path.Combine(localAppData, "encore"));
                 candidates.Add(Path.Combine(localAppData, "BSManager", "BSInstances"));
             }
 
             if (!string.IsNullOrWhiteSpace(homePath))
             {
+                candidates.Add(Path.Combine(homePath, "encore"));
                 candidates.Add(Path.Combine(homePath, "BSManager", "BSInstances"));
             }
         }
@@ -215,6 +218,9 @@ public partial class MainWindow : Window
         {
             if (!string.IsNullOrWhiteSpace(homePath))
             {
+                candidates.Add(Path.Combine(homePath, ".local", "share", "encore"));
+                candidates.Add(Path.Combine(homePath, ".config", "encore"));
+                candidates.Add(Path.Combine(homePath, "encore"));
                 candidates.Add(Path.Combine(homePath, ".local", "share", "BSManager", "BSInstances"));
                 candidates.Add(Path.Combine(homePath, ".config", "BSManager", "BSInstances"));
                 candidates.Add(Path.Combine(homePath, "BSManager", "BSInstances"));

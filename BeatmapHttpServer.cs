@@ -29,12 +29,14 @@ public static class BeatmapHttpServer
     {
         if (_app is not null)
         {
+            AppLogger.Warn("HTTP server start requested while already running.");
             return;
         }
 
         var settings = AppSettings.Load();
         var hostAddress = GetLocalAddress();
         var port = settings.ServerPort is > 0 and < 65536 ? settings.ServerPort : 5050;
+        AppLogger.Info($"Starting HTTP server on http://{hostAddress}:{port}.");
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls($"http://{hostAddress}:{port}");
 
@@ -47,6 +49,7 @@ public static class BeatmapHttpServer
             var folderPath = ResolveCustomLevelFolder(customLevel);
             if (string.IsNullOrWhiteSpace(folderPath) || !Directory.Exists(folderPath))
             {
+                AppLogger.Warn($"Download requested for missing beatmap folder. Beatmap={customLevel}");
                 return Results.NotFound();
             }
 
@@ -59,6 +62,7 @@ public static class BeatmapHttpServer
             var folderPath = ResolveCustomLevelFolder(customLevel);
             if (string.IsNullOrWhiteSpace(folderPath) || !Directory.Exists(folderPath))
             {
+                AppLogger.Warn($"Path download requested for missing beatmap folder. Beatmap={customLevel}, RelativePath={relativePath ?? "<null>"}");
                 return Results.NotFound();
             }
 
@@ -75,11 +79,13 @@ public static class BeatmapHttpServer
 
             if (!targetPath.StartsWith(Path.GetFullPath(folderPath), StringComparison.OrdinalIgnoreCase))
             {
+                AppLogger.Warn($"Rejected path traversal candidate. Beatmap={customLevel}, RelativePath={relativePath ?? "<null>"}");
                 return Results.BadRequest();
             }
 
             if (!ShouldIncludePathInDownload(targetPath, folderPath, source))
             {
+                AppLogger.Warn($"Rejected path from download set. Beatmap={customLevel}, RelativePath={relativePath ?? "<null>"}");
                 return Results.NotFound();
             }
 
@@ -103,6 +109,7 @@ public static class BeatmapHttpServer
         _app = app;
         StartMdnsAdvertisement(port);
         ServerStatusChanged?.Invoke(true);
+        AppLogger.Info("HTTP server started and mDNS advertisement initialized.");
 
         _ = Task.Run(async () =>
         {
@@ -110,9 +117,10 @@ public static class BeatmapHttpServer
             {
                 await app.RunAsync();
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 // The app is closing; this is expected in hosted desktop scenarios.
+                AppLogger.Warn($"HTTP server run loop exited with exception: {ex.Message}");
             }
         });
     }
@@ -126,19 +134,23 @@ public static class BeatmapHttpServer
     {
         if (_app is null)
         {
+            AppLogger.Info("HTTP server stop requested while server was not running.");
             return;
         }
 
+        AppLogger.Info("Stopping HTTP server.");
         await _app.StopAsync();
         await _app.DisposeAsync();
         _app = null;
         StopMdnsAdvertisement();
         ServerStatusChanged?.Invoke(false);
+        AppLogger.Info("HTTP server stopped.");
     }
 
     public static async Task RestartAsync(int? portOverride = null)
     {
         var settings = AppSettings.Load();
+        var previousPort = settings.ServerPort;
         var nextPort = portOverride is > 0 and < 65536 ? portOverride.Value : settings.ServerPort;
 
         if (nextPort is <= 0 or >= 65536)
@@ -148,6 +160,7 @@ public static class BeatmapHttpServer
 
         settings.ServerPort = nextPort;
         AppSettings.Save(settings.SelectedFolder, settings.EnableStartup, settings.SelectedVersion, settings.SelectedBeatmapSource, settings.HideBeatmapList, settings.SelectedBeatmapNames, nextPort);
+        AppLogger.Info($"Restarting HTTP server. PreviousPort={previousPort}, NextPort={nextPort}, Override={(portOverride.HasValue ? portOverride.Value.ToString() : "<none>")}");
 
         if (_app is not null)
         {
@@ -191,6 +204,7 @@ public static class BeatmapHttpServer
 
         if (string.IsNullOrWhiteSpace(selectedFolder) || !Directory.Exists(selectedFolder))
         {
+            AppLogger.Warn($"Beatmap API: selected folder unavailable. Folder={selectedFolder ?? "<null>"}");
             return null;
         }
 
@@ -210,6 +224,7 @@ public static class BeatmapHttpServer
         var versionFolderPath = versionFolders.FirstOrDefault();
         if (string.IsNullOrWhiteSpace(versionFolderPath))
         {
+            AppLogger.Warn($"Beatmap API: no matching Beat Saber version found. Folder={selectedFolder}, RequestedVersion={selectedVersion ?? "<auto>"}");
             return null;
         }
 
@@ -223,7 +238,14 @@ public static class BeatmapHttpServer
             CustomLevels = GetCustomLevels(MainViewModel.GetBeatmapRootPath(versionFolderPath, settings.SelectedBeatmapSource), source, includeOnlySelected, selectedBeatmapNames),
         };
 
-        return version.CustomLevels.Count > 0 ? version : null;
+        if (version.CustomLevels.Count <= 0)
+        {
+            AppLogger.Warn($"Beatmap API: no custom levels found. Version={version.Name}, Source={source}");
+            return null;
+        }
+
+        AppLogger.Info($"Beatmap API payload ready. Version={version.Name}, Source={source}, Count={version.CustomLevels.Count}");
+        return version;
     }
 
     private static List<CustomLevelFolder> GetCustomLevels(string customLevelsFolder, string source, bool includeOnlySelected = false, IReadOnlyCollection<string>? selectedBeatmapNames = null)
@@ -364,6 +386,7 @@ public static class BeatmapHttpServer
 
         if (string.IsNullOrWhiteSpace(selectedFolder) || !Directory.Exists(selectedFolder))
         {
+            AppLogger.Warn($"ResolveCustomLevelFolder failed: selected root folder missing. Beatmap={customLevel}");
             return null;
         }
 
@@ -382,28 +405,43 @@ public static class BeatmapHttpServer
             foreach (var versionFolder in versionFolders)
             {
                 var customLevelsRoot = MainViewModel.GetBeatmapRootPath(versionFolder, selectedBeatmapSource);
+                if (!Directory.Exists(customLevelsRoot))
+                {
+                    continue;
+                }
+
                 var match = Directory.EnumerateDirectories(customLevelsRoot)
                     .Where(folder => !includeOnlySelected || selectedBeatmapNames.Contains(Path.GetFileName(folder), StringComparer.OrdinalIgnoreCase))
                     .FirstOrDefault(folder => string.Equals(Path.GetFileName(folder), customLevel, StringComparison.OrdinalIgnoreCase));
 
                 if (!string.IsNullOrWhiteSpace(match))
                 {
+                    AppLogger.Info($"Resolved beatmap folder. Beatmap={customLevel}, VersionFolder={Path.GetFileName(versionFolder)}");
                     return match;
                 }
             }
 
+            AppLogger.Warn($"Could not resolve beatmap folder across versions. Beatmap={customLevel}");
             return null;
         }
 
         var customLevelsDirectory = MainViewModel.GetBeatmapRootPath(Path.Combine(selectedFolder, selectedVersion), selectedBeatmapSource);
         if (!Directory.Exists(customLevelsDirectory))
         {
+            AppLogger.Warn($"Custom levels directory missing. Directory={customLevelsDirectory}");
             return null;
         }
 
-        return Directory.EnumerateDirectories(customLevelsDirectory)
+        var resolved = Directory.EnumerateDirectories(customLevelsDirectory)
             .Where(folder => !includeOnlySelected || selectedBeatmapNames.Contains(Path.GetFileName(folder), StringComparer.OrdinalIgnoreCase))
             .FirstOrDefault(folder => string.Equals(Path.GetFileName(folder), customLevel, StringComparison.OrdinalIgnoreCase));
+
+        if (string.IsNullOrWhiteSpace(resolved))
+        {
+            AppLogger.Warn($"Could not resolve beatmap folder in selected version. Beatmap={customLevel}, Version={selectedVersion}");
+        }
+
+        return resolved;
     }
 
     private static List<string> GetSelectedBeatmapNames(AppSettings settings)
@@ -503,6 +541,7 @@ public static class BeatmapHttpServer
 
     private static byte[] CreateZipForFolder(string folderPath, Func<string, bool>? includeFile = null)
     {
+        var includedCount = 0;
         using var stream = new MemoryStream();
         using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
         {
@@ -515,10 +554,13 @@ public static class BeatmapHttpServer
 
                 var relativePath = Path.GetRelativePath(folderPath, file).Replace('\\', '/');
                 archive.CreateEntryFromFile(file, relativePath, CompressionLevel.Optimal);
+                includedCount++;
             }
         }
 
-        return stream.ToArray();
+        var zipBytes = stream.ToArray();
+        AppLogger.Info($"Created zip archive. Folder={folderPath}, Files={includedCount}, Bytes={zipBytes.Length}");
+        return zipBytes;
     }
 
     private static void StartMdnsAdvertisement(int port)

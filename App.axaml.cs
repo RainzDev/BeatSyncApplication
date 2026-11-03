@@ -22,8 +22,6 @@ namespace BeatSync;
 
 public partial class App : Application
 {
-    private static readonly string AppLogDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BeatSync");
-    private static readonly string AppLogPath = Path.Combine(AppLogDirectory, "BeatSync.log");
 
     // set to true to skip remote update checks during startup.
     private static bool BypassUpdateCheckerForTesting = false;
@@ -33,15 +31,7 @@ public partial class App : Application
 
     private static void Log(string message)
     {
-        try
-        {
-            Directory.CreateDirectory(AppLogDirectory);
-            File.AppendAllText(AppLogPath, $"{DateTimeOffset.Now:O} {message}{Environment.NewLine}");
-        }
-        catch
-        {
-            // Logging is best effort only.
-        }
+        AppLogger.Info(message);
     }
 
     public override void Initialize()
@@ -450,24 +440,8 @@ public partial class App : Application
         {
             if (OperatingSystem.IsWindows())
             {
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "powershell",
-                    Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"[System.Windows.Forms.MessageBox]::Show('A newer version is available. Would you like to download and install the update now?', 'Update available', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question) -eq [System.Windows.Forms.DialogResult]::Yes\"",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    WorkingDirectory = AppContext.BaseDirectory,
-                };
-
-                using var process = Process.Start(psi);
-                if (process is null)
-                {
-                    return await ShowFallbackDialogAsync(loadingWindow);
-                }
-
-                await process.WaitForExitAsync();
-                return process.ExitCode == 0;
+                Log("Showing in-app update prompt for Windows.");
+                return await ShowFallbackDialogAsync(loadingWindow);
             }
 
             if (OperatingSystem.IsLinux())
