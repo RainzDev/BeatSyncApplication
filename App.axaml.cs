@@ -60,22 +60,27 @@ public partial class App : Application
 
             _ = Task.Run(async () =>
             {
+                Log($"Update check config: bypass={BypassUpdateCheckerForTesting}, forcePrompt={ForceUpdatePromptForTesting}.");
                 UpdateStatus updateStatus;
                 if (BypassUpdateCheckerForTesting)
                 {
                     loadingWindow.SetStatus("Update check bypassed for testing");
+                    Log("Bypassing remote update check for testing.");
                     await Task.Delay(400);
                     updateStatus = UpdateStatus.UpToDate;
                 }
                 else if (ForceUpdatePromptForTesting)
                 {
                     loadingWindow.SetStatus("Testing update prompt");
+                    Log("Forcing the update prompt for local testing.");
                     await Task.Delay(400);
                     updateStatus = UpdateStatus.UpdateAvailable;
                 }
                 else
                 {
+                    Log("Starting remote update check.");
                     updateStatus = await CheckForUpdatesAsync(loadingWindow);
+                    Log($"Remote update check finished with status: {updateStatus}.");
                 }
 
                 if (updateStatus == UpdateStatus.Failed)
@@ -91,7 +96,9 @@ public partial class App : Application
 
                 if (updateStatus == UpdateStatus.UpdateAvailable)
                 {
+                    Log("Update prompt requested.");
                     var shouldUpdate = await Dispatcher.UIThread.InvokeAsync(async () => await PromptForUpdateAsync(loadingWindow));
+                    Log($"User chose to update: {shouldUpdate}.");
                     if (!shouldUpdate)
                     {
                         loadingWindow.SetStatus("Update skipped. Starting app...");
@@ -101,6 +108,7 @@ public partial class App : Application
                     {
                         try
                         {
+                            Log("Starting automatic update process.");
                             await PerformAutoUpdateAsync(loadingWindow);
                         }
                         catch (Exception ex)
@@ -154,6 +162,7 @@ public partial class App : Application
 
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
+            Log($"Update check attempt {attempt}/{maxAttempts} starting.");
             loadingWindow.SetStatus(attempt == 1
                 ? "Checking for updates..."
                 : $"Retrying update check ({attempt}/{maxAttempts})...");
@@ -161,6 +170,7 @@ public partial class App : Application
             try
             {
                 var result = await TryCheckForUpdatesAsync(loadingWindow);
+                Log($"Update check attempt {attempt}/{maxAttempts} returned {result}.");
                 if (result == UpdateStatus.UpdateAvailable || result == UpdateStatus.UpToDate)
                 {
                     return result;
@@ -192,10 +202,12 @@ public partial class App : Application
         using var response = await client.GetAsync("https://api.github.com/repos/RainzDev/BeatSyncApplication/releases/latest");
         if (!response.IsSuccessStatusCode)
         {
+            Log($"GitHub latest release request failed: {(int)response.StatusCode} {response.ReasonPhrase}.");
             return UpdateStatus.Failed;
         }
 
         var json = await response.Content.ReadAsStringAsync();
+        Log("GitHub release metadata received.");
         using var document = JsonDocument.Parse(json);
         if (!TryValidateReleaseMetadata(document.RootElement, out var validationMessage))
         {
@@ -206,16 +218,19 @@ public partial class App : Application
 
         if (!document.RootElement.TryGetProperty("assets", out var assetsElement))
         {
+            Log("GitHub release metadata had no assets array.");
             return UpdateStatus.Failed;
         }
 
         if (!TryGetMatchingAsset(assetsElement, out var assetElement))
         {
+            Log("No matching platform release asset was found.");
             return UpdateStatus.Failed;
         }
 
         if (!TryGetManifestAsset(assetsElement, out var manifestAssetElement))
         {
+            Log("Release manifest asset was missing from the GitHub release.");
             loadingWindow.SetStatus("Release manifest missing. Update aborted for safety.");
             await Task.Delay(1200);
             return UpdateStatus.Failed;
@@ -223,6 +238,7 @@ public partial class App : Application
 
         if (!TryGetAssetDigestSha256(assetElement, out var expectedAssetDigest))
         {
+            Log("Release asset digest missing from GitHub metadata.");
             loadingWindow.SetStatus("Release asset digest missing. Update aborted for safety.");
             await Task.Delay(1200);
             return UpdateStatus.Failed;
