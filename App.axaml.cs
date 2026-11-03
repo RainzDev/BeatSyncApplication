@@ -426,81 +426,87 @@ public partial class App : Application
 
     private static async Task<bool> PromptForUpdateAsync(LoadingWindow loadingWindow)
     {
-        var shouldHideLoadingWindow = false;
-        Dispatcher.UIThread.Invoke(() =>
+        if (OperatingSystem.IsWindows())
         {
-            if (loadingWindow.IsVisible)
+            Log("Showing native Windows update prompt.");
+            var nativeResult = ShowWindowsNativeUpdatePrompt();
+            if (nativeResult.HasValue)
             {
-                loadingWindow.Hide();
-                shouldHideLoadingWindow = true;
-            }
-        });
-
-        try
-        {
-            if (OperatingSystem.IsWindows())
-            {
-                Log("Showing in-app update prompt for Windows.");
-                return await ShowFallbackDialogAsync(loadingWindow);
+                return nativeResult.Value;
             }
 
-            if (OperatingSystem.IsLinux())
-            {
-                var dialogCommands = new[]
-                {
-                    new[] { "zenity", "--question --title=\"Update available\" --text=\"A newer version is available. Would you like to download and install the update now?\" --ok-label=Yes --cancel-label=No" },
-                    new[] { "kdialog", "--yesno \"A newer version is available. Would you like to download and install the update now?\"" },
-                };
-
-                foreach (var command in dialogCommands)
-                {
-                    var fileName = command[0];
-                    var arguments = command[1];
-                    var commandPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-                    if (string.IsNullOrWhiteSpace(commandPath) || !commandPath.Split(Path.PathSeparator).Any(path => File.Exists(Path.Combine(path, fileName))))
-                    {
-                        continue;
-                    }
-
-                    var psi = new ProcessStartInfo
-                    {
-                        FileName = fileName,
-                        Arguments = arguments,
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        WorkingDirectory = AppContext.BaseDirectory,
-                    };
-
-                    using var process = Process.Start(psi);
-                    if (process is null)
-                    {
-                        continue;
-                    }
-
-                    await process.WaitForExitAsync();
-                    return process.ExitCode == 0;
-                }
-            }
-
+            Log("Native Windows update prompt failed. Falling back to in-app dialog.");
             return await ShowFallbackDialogAsync(loadingWindow);
         }
-        finally
+
+        if (OperatingSystem.IsLinux())
         {
-            if (shouldHideLoadingWindow)
+            var dialogCommands = new[]
             {
-                Dispatcher.UIThread.Post(() =>
+                new[] { "zenity", "--question --title=\"Update available\" --text=\"A newer version is available. Would you like to download and install the update now?\" --ok-label=Yes --cancel-label=No" },
+                new[] { "kdialog", "--yesno \"A newer version is available. Would you like to download and install the update now?\"" },
+            };
+
+            foreach (var command in dialogCommands)
+            {
+                var fileName = command[0];
+                var arguments = command[1];
+                var commandPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(commandPath) || !commandPath.Split(Path.PathSeparator).Any(path => File.Exists(Path.Combine(path, fileName))))
                 {
-                    if (!loadingWindow.IsVisible)
-                    {
-                        loadingWindow.Show();
-                        loadingWindow.Topmost = true;
-                        loadingWindow.Activate();
-                    }
-                });
+                    continue;
+                }
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = fileName,
+                    Arguments = arguments,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    WorkingDirectory = AppContext.BaseDirectory,
+                };
+
+                using var process = Process.Start(psi);
+                if (process is null)
+                {
+                    continue;
+                }
+
+                await process.WaitForExitAsync();
+                return process.ExitCode == 0;
             }
         }
+
+        return await ShowFallbackDialogAsync(loadingWindow);
     }
+
+    private static bool? ShowWindowsNativeUpdatePrompt()
+    {
+        try
+        {
+            const uint mbYesNo = 0x00000004;
+            const uint mbIconQuestion = 0x00000020;
+            const uint mbSystemModal = 0x00001000;
+            const int idYes = 6;
+
+            var result = MessageBoxW(
+                IntPtr.Zero,
+                "A newer version is available. Would you like to download and install the update now?",
+                "Update available",
+                mbYesNo | mbIconQuestion | mbSystemModal);
+
+            return result == idYes;
+        }
+        catch (Exception ex)
+        {
+            Log($"Native Windows update prompt failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int MessageBoxW(IntPtr hWnd, string text, string caption, uint type);
 
     private static async Task<bool> ShowFallbackDialogAsync(LoadingWindow loadingWindow)
     {
