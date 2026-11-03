@@ -37,19 +37,7 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var loadingWindow = new LoadingWindow
-            {
-                Topmost = true,
-            };
-
-            loadingWindow.Deactivated += (_, _) =>
-            {
-                if (loadingWindow.IsVisible)
-                {
-                    loadingWindow.Topmost = true;
-                    loadingWindow.Activate();
-                }
-            };
+            var loadingWindow = new LoadingWindow();
 
             loadingWindow.Show();
 
@@ -85,15 +73,6 @@ public partial class App : Application
 
                 if (updateStatus == UpdateStatus.UpdateAvailable)
                 {
-                    Dispatcher.UIThread.Post(() =>
-                    {
-                        if (loadingWindow.IsVisible)
-                        {
-                            loadingWindow.Topmost = true;
-                            loadingWindow.Activate();
-                        }
-                    });
-
                     var shouldUpdate = await Dispatcher.UIThread.InvokeAsync(async () => await PromptForUpdateAsync(loadingWindow));
                     if (!shouldUpdate)
                     {

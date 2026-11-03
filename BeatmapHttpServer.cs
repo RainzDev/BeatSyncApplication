@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 using BeatSync.Models;
 using BeatSync.ViewModels;
+using Makaretu.Dns;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -19,6 +20,8 @@ namespace BeatSync;
 public static class BeatmapHttpServer
 {
     private static WebApplication? _app;
+    private static ServiceDiscovery? _serviceDiscovery;
+    private static ServiceProfile? _serviceProfile;
     public static event Action<bool>? ServerStatusChanged;
     public static bool IsRunning => _app is not null;
 
@@ -98,6 +101,7 @@ public static class BeatmapHttpServer
         app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
         _app = app;
+        StartMdnsAdvertisement(port);
         ServerStatusChanged?.Invoke(true);
 
         _ = Task.Run(async () =>
@@ -128,6 +132,7 @@ public static class BeatmapHttpServer
         await _app.StopAsync();
         await _app.DisposeAsync();
         _app = null;
+        StopMdnsAdvertisement();
         ServerStatusChanged?.Invoke(false);
     }
 
@@ -514,6 +519,36 @@ public static class BeatmapHttpServer
         }
 
         return stream.ToArray();
+    }
+
+    private static void StartMdnsAdvertisement(int port)
+    {
+        StopMdnsAdvertisement();
+
+        try
+        {
+            var serviceName = $"BeatSync-{Environment.MachineName}";
+            var service = new ServiceProfile(serviceName, "_http._tcp", (ushort)port);
+            service.AddProperty("path", "/");
+
+            var discovery = new ServiceDiscovery();
+            discovery.Advertise(service);
+
+            _serviceProfile = service;
+            _serviceDiscovery = discovery;
+        }
+        catch
+        {
+            // Ignore mDNS failures so local HTTP serving still works.
+            StopMdnsAdvertisement();
+        }
+    }
+
+    private static void StopMdnsAdvertisement()
+    {
+        _serviceDiscovery?.Dispose();
+        _serviceDiscovery = null;
+        _serviceProfile = null;
     }
 
     private sealed class BeatmapResponse
