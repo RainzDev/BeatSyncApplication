@@ -22,11 +22,27 @@ namespace BeatSync;
 
 public partial class App : Application
 {
+    private static readonly string AppLogDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BeatSync");
+    private static readonly string AppLogPath = Path.Combine(AppLogDirectory, "BeatSync.log");
+
     // set to true to skip remote update checks during startup.
     private static bool BypassUpdateCheckerForTesting = false;
 
     // set to true to force the update prompt during local testing without publishing a new release.
     private static bool ForceUpdatePromptForTesting = false;
+
+    private static void Log(string message)
+    {
+        try
+        {
+            Directory.CreateDirectory(AppLogDirectory);
+            File.AppendAllText(AppLogPath, $"{DateTimeOffset.Now:O} {message}{Environment.NewLine}");
+        }
+        catch
+        {
+            // Logging is best effort only.
+        }
+    }
 
     public override void Initialize()
     {
@@ -40,6 +56,7 @@ public partial class App : Application
             var loadingWindow = new LoadingWindow();
 
             loadingWindow.Show();
+            Log("Application startup began.");
 
             _ = Task.Run(async () =>
             {
@@ -63,6 +80,7 @@ public partial class App : Application
 
                 if (updateStatus == UpdateStatus.Failed)
                 {
+                    Log($"Update check failed with status {updateStatus}.");
                     Dispatcher.UIThread.Post(() =>
                     {
                         loadingWindow.Close();
@@ -85,8 +103,9 @@ public partial class App : Application
                         {
                             await PerformAutoUpdateAsync(loadingWindow);
                         }
-                        catch
+                        catch (Exception ex)
                         {
+                            Log($"Auto-update failed: {ex}");
                             loadingWindow.SetStatus("Update failed. Starting app...");
                             await Task.Delay(1200);
                         }
@@ -100,6 +119,7 @@ public partial class App : Application
                     }
                 }
 
+                Log("Application main window starting.");
                 var viewModel = new MainViewModel();
 
                 Dispatcher.UIThread.Post(() =>
@@ -146,9 +166,9 @@ public partial class App : Application
                     return result;
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Retry on network or release-check failures.
+                Log($"Update check attempt {attempt} failed: {ex}");
             }
 
             if (attempt < maxAttempts)
