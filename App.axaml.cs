@@ -380,21 +380,13 @@ public partial class App : Application
         ZipFile.ExtractToDirectory(zipPath, extractedPath);
 
         var binaryName = GetCurrentBinaryFileName();
-        var replacementBinary = Directory.GetFiles(extractedPath, binaryName, SearchOption.AllDirectories)
-            .FirstOrDefault();
-
-        if (string.IsNullOrWhiteSpace(replacementBinary))
-        {
-            throw new InvalidOperationException("Replacement binary not found in the downloaded update package.");
-        }
-
         var targetBinary = GetCurrentBinaryPath(binaryName);
         if (string.IsNullOrWhiteSpace(targetBinary))
         {
             throw new InvalidOperationException("Current binary path could not be resolved.");
         }
 
-        var updaterPath = CreateRestartUpdater(targetBinary, replacementBinary, binaryName);
+        var updaterPath = CreateRestartUpdater(targetBinary, extractedPath, binaryName);
         Process.Start(new ProcessStartInfo
         {
             FileName = updaterPath,
@@ -581,7 +573,7 @@ public partial class App : Application
         return true;
     }
 
-    private static string CreateRestartUpdater(string targetBinary, string replacementBinary, string binaryName)
+    private static string CreateRestartUpdater(string targetBinary, string replacementRoot, string binaryName)
     {
         var tempScriptDir = Path.Combine(Path.GetTempPath(), "BeatSyncUpdater" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempScriptDir);
@@ -589,33 +581,13 @@ public partial class App : Application
         if (OperatingSystem.IsWindows())
         {
             var scriptPath = Path.Combine(tempScriptDir, "apply-update.cmd");
-            var script = $"@echo off\r\nsetlocal\r\n" +
-                         $"ping -n 4 127.0.0.1 > nul\r\n" +
-                         $"set \"TARGET={targetBinary}\"\r\n" +
-                         $"set \"NEW={replacementBinary}\"\r\n" +
-                         $"set \"BACKUP={targetBinary}.bak\"\r\n" +
-                         $"if exist \"%BACKUP%\" del /f /q \"%BACKUP%\"\r\n" +
-                         $"ren \"%TARGET%\" \"{binaryName}.bak\"\r\n" +
-                         $"copy /Y \"%NEW%\" \"%TARGET%\" > nul\r\n" +
-                         $"start \"\" \"%TARGET%\"\r\n" +
-                         $"exit /b 0\r\n";
-
+            var script = BuildWindowsUpdaterScript(targetBinary, replacementRoot, binaryName);
             File.WriteAllText(scriptPath, script);
             return scriptPath;
         }
 
         var shellPath = Path.Combine(tempScriptDir, "apply-update.sh");
-        var shellScript = $"#!/bin/bash\n" +
-                          $"sleep 2\n" +
-                          $"TARGET=\"{targetBinary}\"\n" +
-                          $"NEW=\"{replacementBinary}\"\n" +
-                          $"BACKUP=\"${{TARGET}}.bak\"\n" +
-                          $"rm -f \"$BACKUP\"\n" +
-                          $"mv -f \"$TARGET\" \"$BACKUP\"\n" +
-                          $"cp -f \"$NEW\" \"$TARGET\"\n" +
-                          $"chmod +x \"$TARGET\"\n" +
-                          $"nohup \"$TARGET\" >/dev/null 2>&1 &\n" +
-                          $"rm -rf \"{tempScriptDir}\"\n";
+        var shellScript = BuildLinuxUpdaterScript(targetBinary, replacementRoot, binaryName, tempScriptDir);
 
         File.WriteAllText(shellPath, shellScript);
         var chmodInfo = new ProcessStartInfo
@@ -626,6 +598,48 @@ public partial class App : Application
         };
         Process.Start(chmodInfo)?.WaitForExit();
         return shellPath;
+    }
+
+    public static string BuildLinuxUpdaterScript(string targetBinary, string replacementRoot, string binaryName, string? scriptDirectory = null)
+    {
+        var appDirectory = Path.GetDirectoryName(targetBinary) ?? Directory.GetCurrentDirectory();
+        var backupDirectory = appDirectory + ".bak";
+        var cleanupDirectory = string.IsNullOrWhiteSpace(scriptDirectory)
+            ? Path.GetDirectoryName(targetBinary) ?? Directory.GetCurrentDirectory()
+            : scriptDirectory;
+
+        return $"#!/bin/bash\n" +
+               $"sleep 2\n" +
+               $"TARGET=\"{targetBinary}\"\n" +
+               $"APP_ROOT=\"{appDirectory}\"\n" +
+               $"STAGED_DIR=\"{replacementRoot}\"\n" +
+               $"BACKUP_DIR=\"{backupDirectory}\"\n" +
+               $"rm -rf \"$BACKUP_DIR\"\n" +
+               $"mv -f \"$APP_ROOT\" \"$BACKUP_DIR\"\n" +
+               $"mv -f \"$STAGED_DIR\" \"$APP_ROOT\"\n" +
+               $"chmod +x \"$TARGET\"\n" +
+               $"nohup \"$TARGET\" >/dev/null 2>&1 &\n" +
+               $"rm -rf \"{cleanupDirectory}\"\n";
+    }
+
+    public static string BuildWindowsUpdaterScript(string targetBinary, string replacementRoot, string binaryName)
+    {
+        var appDirectory = Path.GetDirectoryName(targetBinary) ?? Directory.GetCurrentDirectory();
+        var backupDirectory = appDirectory + ".bak";
+        var script = $"@echo off\r\n" +
+                     $"setlocal\r\n" +
+                     $"ping -n 4 127.0.0.1 > nul\r\n" +
+                     $"set \"TARGET={targetBinary}\"\r\n" +
+                     $"set \"APP_DIR={appDirectory}\\\"\r\n" +
+                     $"set \"STAGED_DIR={replacementRoot}\"\r\n" +
+                     $"set \"BACKUP_DIR={backupDirectory}\"\r\n" +
+                     $"if exist \"%BACKUP_DIR%\" rmdir /s /q \"%BACKUP_DIR%\"\r\n" +
+                     $"robocopy \"%STAGED_DIR%\" \"%APP_DIR%\" /E /COPY:DAT /DCOPY:DAT /R:1 /W:1 > nul\r\n" +
+                     $"if not exist \"%TARGET%\" start \"\" \"%TARGET%\"\r\n" +
+                     $"start \"\" \"%TARGET%\"\r\n" +
+                     $"exit /b 0\r\n";
+
+        return script;
     }
 
     private static bool TryGetMatchingAsset(JsonElement assetsElement, out JsonElement assetElement)

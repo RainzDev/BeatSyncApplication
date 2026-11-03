@@ -528,6 +528,7 @@ public static class BeatmapHttpServer
         try
         {
             var serviceName = $"BeatSync-{Environment.MachineName}";
+            // ServiceProfile expects DNS-SD service type; domain defaults to local.
             var service = new ServiceProfile(serviceName, "_http._tcp", (ushort)port);
             service.AddProperty("path", "/");
 
