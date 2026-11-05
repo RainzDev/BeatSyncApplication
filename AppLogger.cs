@@ -9,6 +9,22 @@ public static class AppLogger
     private static readonly string LogDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BeatSync");
     private static readonly string LogPath = Path.Combine(LogDirectory, "BeatSync.log");
 
+    public static void Clear()
+    {
+        try
+        {
+            lock (SyncRoot)
+            {
+                Directory.CreateDirectory(LogDirectory);
+                File.WriteAllText(LogPath, string.Empty);
+            }
+        }
+        catch
+        {
+            // Logging is best effort only.
+        }
+    }
+
     public static void Info(string message)
     {
         Write("INFO", message);
