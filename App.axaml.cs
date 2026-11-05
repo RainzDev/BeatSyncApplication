@@ -412,7 +412,8 @@ public partial class App : Application
             throw new InvalidOperationException("Current binary path could not be resolved.");
         }
 
-        var updaterPath = CreateRestartUpdater(targetBinary, extractedPath, binaryName);
+        var stagedRoot = GetStagedUpdateRoot(extractedPath, binaryName);
+        var updaterPath = CreateRestartUpdater(targetBinary, stagedRoot, binaryName);
         Process.Start(new ProcessStartInfo
         {
             FileName = updaterPath,
@@ -619,7 +620,6 @@ public partial class App : Application
     public static string BuildLinuxUpdaterScript(string targetBinary, string replacementRoot, string binaryName, string? scriptDirectory = null)
     {
         var appDirectory = Path.GetDirectoryName(targetBinary) ?? Directory.GetCurrentDirectory();
-        var backupDirectory = appDirectory + ".bak";
         var cleanupDirectory = string.IsNullOrWhiteSpace(scriptDirectory)
             ? Path.GetDirectoryName(targetBinary) ?? Directory.GetCurrentDirectory()
             : scriptDirectory;
@@ -627,12 +627,11 @@ public partial class App : Application
         return $"#!/bin/bash\n" +
                $"sleep 2\n" +
                $"TARGET=\"{targetBinary}\"\n" +
-               $"APP_ROOT=\"{appDirectory}\"\n" +
+               $"APP_DIR=\"{appDirectory}\"\n" +
                $"STAGED_DIR=\"{replacementRoot}\"\n" +
-               $"BACKUP_DIR=\"{backupDirectory}\"\n" +
-               $"rm -rf \"$BACKUP_DIR\"\n" +
-               $"mv -f \"$APP_ROOT\" \"$BACKUP_DIR\"\n" +
-               $"mv -f \"$STAGED_DIR\" \"$APP_ROOT\"\n" +
+               $"while pgrep -f \"{binaryName}\" >/dev/null 2>&1; do sleep 2; done\n" +
+               $"mkdir -p \"$APP_DIR\"\n" +
+               $"cp -a \"$STAGED_DIR\"/. \"$APP_DIR\"/\n" +
                $"chmod +x \"$TARGET\"\n" +
                $"nohup \"$TARGET\" >/dev/null 2>&1 &\n" +
                $"rm -rf \"{cleanupDirectory}\"\n";
@@ -641,25 +640,23 @@ public partial class App : Application
     public static string BuildWindowsUpdaterScript(string targetBinary, string replacementRoot, string binaryName)
     {
         var appDirectory = Path.GetDirectoryName(targetBinary) ?? Directory.GetCurrentDirectory();
-        var appName = Path.GetFileName(appDirectory);
-        var backupDirectory = appDirectory + ".bak";
 
         var script = $"@echo off\r\n" +
                      $"setlocal\r\n" +
                      $"set \"TARGET={targetBinary}\"\r\n" +
                      $"set \"APP_DIR={appDirectory}\"\r\n" +
-                     $"set \"APP_NAME={appName}\"\r\n" +
                      $"set \"STAGED_DIR={replacementRoot}\"\r\n" +
-                     $"set \"BACKUP_DIR={backupDirectory}\"\r\n" +
                      $":wait_for_exit\r\n" +
                      $"tasklist /FI \"IMAGENAME eq {binaryName}\" 2>NUL | find /I \"{binaryName}\" >NUL\r\n" +
                      $"if not errorlevel 1 (\r\n" +
                      $"  timeout /t 2 /nobreak >nul\r\n" +
                      $"  goto wait_for_exit\r\n" +
                      $")\r\n" +
-                     $"if exist \"%BACKUP_DIR%\" rmdir /s /q \"%BACKUP_DIR%\"\r\n" +
-                     $"if exist \"%APP_DIR%\" ren \"%APP_DIR%\" \"%APP_NAME%.bak\"\r\n" +
-                     $"move /Y \"%STAGED_DIR%\" \"%APP_DIR%\" >nul\r\n" +
+                     $"if not exist \"%APP_DIR%\" mkdir \"%APP_DIR%\"\r\n" +
+                     $"robocopy \"%STAGED_DIR%\" \"%APP_DIR%\" /E /COPY:DAT /R:1 /W:1 >nul\r\n" +
+                     $"if errorlevel 8 (\r\n" +
+                     $"  exit /b 1\r\n" +
+                     $")\r\n" +
                      $"start \"\" \"%TARGET%\"\r\n" +
                      $"exit /b 0\r\n";
 
@@ -847,6 +844,25 @@ public partial class App : Application
         }
 
         return string.Empty;
+    }
+
+    private static string GetStagedUpdateRoot(string extractedPath, string binaryName)
+    {
+        var directBinaryPath = Path.Combine(extractedPath, binaryName);
+        if (File.Exists(directBinaryPath))
+        {
+            return extractedPath;
+        }
+
+        var matchingDirectory = Directory.EnumerateDirectories(extractedPath, "*", SearchOption.AllDirectories)
+            .FirstOrDefault(directory => File.Exists(Path.Combine(directory, binaryName)));
+
+        if (!string.IsNullOrWhiteSpace(matchingDirectory))
+        {
+            return matchingDirectory;
+        }
+
+        return extractedPath;
     }
 
     private static string ComputeSha256ForArchiveEntry(ZipArchive archive, string binaryName)

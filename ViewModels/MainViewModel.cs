@@ -81,6 +81,7 @@ public partial class MainViewModel : ViewModelBase
 
     public ObservableCollection<BeatmapEntryViewModel> SelectedBeatmaps { get; } = new();
 
+    private const int BeatmapThumbnailWidth = 72;
     private readonly Dictionary<string, List<string>> _beatmapContentsCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, long> _beatmapSizeCache = new(StringComparer.OrdinalIgnoreCase);
     private DispatcherTimer? _selectionRefreshTimer;
@@ -279,6 +280,12 @@ public partial class MainViewModel : ViewModelBase
     public void RefreshBeatmapEntries()
     {
         AppLogger.Info($"Refreshing beatmap entries. Folder={SelectedFolder}, Version={SelectedVersion ?? "<none>"}, Source={SelectedBeatmapSource}");
+        foreach (var beatmap in BeatmapEntries)
+        {
+            beatmap.Image?.Dispose();
+            beatmap.Image = null;
+        }
+
         _beatmapContentsCache.Clear();
         _beatmapSizeCache.Clear();
         BeatmapEntries.Clear();
@@ -433,7 +440,7 @@ public partial class MainViewModel : ViewModelBase
             .FirstOrDefault();
     }
 
-    private static Bitmap? LoadBeatmapImage(string beatmapFolder)
+    internal static Bitmap? LoadBeatmapImage(string beatmapFolder, Func<Stream, int, BitmapInterpolationMode, Bitmap?>? bitmapDecoder = null)
     {
         var imagePath = FindBeatmapImage(beatmapFolder);
         if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
@@ -443,7 +450,9 @@ public partial class MainViewModel : ViewModelBase
 
         try
         {
-            return new Bitmap(imagePath);
+            using var imageStream = File.OpenRead(imagePath);
+            var decoder = bitmapDecoder ?? ((stream, width, mode) => Bitmap.DecodeToWidth(stream, width, mode));
+            return decoder(imageStream, BeatmapThumbnailWidth, BitmapInterpolationMode.HighQuality);
         }
         catch
         {
