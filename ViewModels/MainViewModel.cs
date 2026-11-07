@@ -8,6 +8,8 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
@@ -81,10 +83,14 @@ public partial class MainViewModel : ViewModelBase
 
     public ObservableCollection<BeatmapEntryViewModel> SelectedBeatmaps { get; } = new();
 
+    [ObservableProperty]
+    private bool isBeatmapListLoading;
+
     private const int BeatmapThumbnailWidth = 72;
     private readonly Dictionary<string, List<string>> _beatmapContentsCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, long> _beatmapSizeCache = new(StringComparer.OrdinalIgnoreCase);
     private DispatcherTimer? _selectionRefreshTimer;
+    private int _beatmapRefreshRequestId;
 
     public ObservableCollection<BeatmapSourceOption> BeatmapSourceOptions { get; } = new()
     {
@@ -279,52 +285,109 @@ public partial class MainViewModel : ViewModelBase
 
     public void RefreshBeatmapEntries()
     {
-        AppLogger.Info($"Refreshing beatmap entries. Folder={SelectedFolder}, Version={SelectedVersion ?? "<none>"}, Source={SelectedBeatmapSource}");
-        foreach (var beatmap in BeatmapEntries)
+        _ = RefreshBeatmapEntriesAsync();
+    }
+
+    private async Task RefreshBeatmapEntriesAsync()
+    {
+        var refreshRequestId = Interlocked.Increment(ref _beatmapRefreshRequestId);
+        var selectedFolder = SelectedFolder;
+        var selectedVersion = SelectedVersion;
+        var selectedBeatmapSource = SelectedBeatmapSource;
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            beatmap.Image?.Dispose();
-            beatmap.Image = null;
-        }
+            foreach (var beatmap in BeatmapEntries)
+            {
+                beatmap.Image?.Dispose();
+                beatmap.Image = null;
+            }
 
-        _beatmapContentsCache.Clear();
-        _beatmapSizeCache.Clear();
-        BeatmapEntries.Clear();
-        SelectedBeatmaps.Clear();
+            _beatmapContentsCache.Clear();
+            _beatmapSizeCache.Clear();
+            BeatmapEntries.Clear();
+            SelectedBeatmaps.Clear();
+            IsBeatmapListLoading = true;
+        });
 
-        if (string.IsNullOrWhiteSpace(SelectedFolder) || string.IsNullOrWhiteSpace(SelectedVersion) || !Directory.Exists(SelectedFolder))
+        AppLogger.Info($"Refreshing beatmap entries. Folder={selectedFolder}, Version={selectedVersion ?? "<none>"}, Source={selectedBeatmapSource}");
+
+        if (string.IsNullOrWhiteSpace(selectedFolder) || string.IsNullOrWhiteSpace(selectedVersion) || !Directory.Exists(selectedFolder))
         {
             AppLogger.Warn("Beatmap refresh skipped due to missing folder or version.");
-            OnPropertyChanged(nameof(FilteredBeatmapEntries));
-            BeatmapJsonPreview = "{}";
+
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (refreshRequestId != _beatmapRefreshRequestId)
+                {
+                    return;
+                }
+
+                IsBeatmapListLoading = false;
+                OnPropertyChanged(nameof(FilteredBeatmapEntries));
+                UpdateCustomLevelsSizeText();
+                BeatmapJsonPreview = "{}";
+            });
             return;
         }
 
-        var beatmapRootPath = GetBeatmapRootPath(SelectedFolder, SelectedVersion, SelectedBeatmapSource);
+        var beatmapRootPath = GetBeatmapRootPath(selectedFolder, selectedVersion, selectedBeatmapSource);
         if (!Directory.Exists(beatmapRootPath))
         {
             AppLogger.Warn($"Beatmap root path not found. Path={beatmapRootPath}");
-            OnPropertyChanged(nameof(FilteredBeatmapEntries));
-            BeatmapJsonPreview = "{}";
+
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (refreshRequestId != _beatmapRefreshRequestId)
+                {
+                    return;
+                }
+
+                IsBeatmapListLoading = false;
+                OnPropertyChanged(nameof(FilteredBeatmapEntries));
+                UpdateCustomLevelsSizeText();
+                BeatmapJsonPreview = "{}";
+            });
             return;
         }
 
-        foreach (var beatmapFolder in Directory.EnumerateDirectories(beatmapRootPath)
-                     .OrderBy(folder => Path.GetFileName(folder), StringComparer.OrdinalIgnoreCase))
+        var refreshedEntries = await Task.Run(() =>
         {
-            var imagePath = FindBeatmapImage(beatmapFolder);
-            var image = LoadBeatmapImage(beatmapFolder);
-            BeatmapEntries.Add(new BeatmapEntryViewModel
-            {
-                Name = Path.GetFileName(beatmapFolder) ?? "Unknown",
-                ImagePath = imagePath,
-                Image = image,
-                HasImage = image is not null,
-            });
-        }
+            return Directory.EnumerateDirectories(beatmapRootPath)
+                .OrderBy(folder => Path.GetFileName(folder), StringComparer.OrdinalIgnoreCase)
+                .Select(folder =>
+                {
+                    var imagePath = FindBeatmapImage(folder);
+                    var image = LoadBeatmapImage(folder);
+                    return new BeatmapEntryViewModel
+                    {
+                        Name = Path.GetFileName(folder) ?? "Unknown",
+                        ImagePath = imagePath,
+                        Image = image,
+                        HasImage = image is not null,
+                    };
+                })
+                .ToList();
+        });
 
-        OnPropertyChanged(nameof(FilteredBeatmapEntries));
-        UpdateBeatmapJsonPreview();
-        AppLogger.Info($"Beatmap refresh completed. Count={BeatmapEntries.Count}, Root={beatmapRootPath}");
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            if (refreshRequestId != _beatmapRefreshRequestId)
+            {
+                return;
+            }
+
+            foreach (var beatmap in refreshedEntries)
+            {
+                BeatmapEntries.Add(beatmap);
+            }
+
+            IsBeatmapListLoading = false;
+            OnPropertyChanged(nameof(FilteredBeatmapEntries));
+            UpdateCustomLevelsSizeText();
+            UpdateBeatmapJsonPreview();
+            AppLogger.Info($"Beatmap refresh completed. Count={BeatmapEntries.Count}, Root={beatmapRootPath}");
+        });
     }
 
     private void UpdateBeatmapJsonPreview()
