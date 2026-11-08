@@ -414,15 +414,174 @@ public partial class App : Application
 
         var stagedRoot = GetStagedUpdateRoot(extractedPath, binaryName);
         var updaterPath = CreateRestartUpdater(targetBinary, stagedRoot, binaryName);
-        Process.Start(new ProcessStartInfo
+
+        if (!TryLaunchUpdaterWithElevation(updaterPath))
         {
-            FileName = updaterPath,
-            UseShellExecute = true,
-            WorkingDirectory = Path.GetDirectoryName(updaterPath) ?? Directory.GetCurrentDirectory(),
-        });
+            throw new InvalidOperationException("Administrator permission is required to install this update.");
+        }
 
         loadingWindow.SetStatus("Restarting to finish update...");
         await Task.Delay(1200);
+    }
+
+    private static bool TryLaunchUpdaterWithElevation(string updaterPath)
+    {
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                if (IsAdministrator())
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = updaterPath,
+                        UseShellExecute = true,
+                        WorkingDirectory = Path.GetDirectoryName(updaterPath) ?? Directory.GetCurrentDirectory(),
+                    });
+                    return true;
+                }
+
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = updaterPath,
+                    UseShellExecute = true,
+                    Verb = "runas",
+                    WorkingDirectory = Path.GetDirectoryName(updaterPath) ?? Directory.GetCurrentDirectory(),
+                });
+                return true;
+            }
+
+            if (OperatingSystem.IsLinux())
+            {
+                if (IsAdministrator())
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = updaterPath,
+                        UseShellExecute = true,
+                        WorkingDirectory = Path.GetDirectoryName(updaterPath) ?? Directory.GetCurrentDirectory(),
+                    });
+                    return true;
+                }
+
+                var commandCandidates = new[]
+                {
+                    new[] { "pkexec", $"/bin/bash \"{updaterPath}\"" },
+                    new[] { "sudo", $"\"{updaterPath}\"" },
+                };
+
+                foreach (var command in commandCandidates)
+                {
+                    if (!TryResolveExecutable(command[0], out var executablePath))
+                    {
+                        continue;
+                    }
+
+                    var psi = new ProcessStartInfo
+                    {
+                        FileName = executablePath,
+                        Arguments = command[1],
+                        UseShellExecute = false,
+                        WorkingDirectory = Path.GetDirectoryName(updaterPath) ?? Directory.GetCurrentDirectory(),
+                    };
+
+                    psi.Environment["DISPLAY"] = Environment.GetEnvironmentVariable("DISPLAY") ?? string.Empty;
+                    psi.Environment["XAUTHORITY"] = Environment.GetEnvironmentVariable("XAUTHORITY") ?? string.Empty;
+
+                    if (Process.Start(psi) is not null)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Log($"Update elevation request failed: {ex}");
+            return false;
+        }
+    }
+
+    private static bool IsAdministrator()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            try
+            {
+                using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+                if (identity is null)
+                {
+                    return false;
+                }
+
+                var principal = new System.Security.Principal.WindowsPrincipal(identity);
+                return principal.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        if (OperatingSystem.IsLinux())
+        {
+            try
+            {
+                if (!File.Exists("/proc/self/status"))
+                {
+                    return false;
+                }
+
+                foreach (var line in File.ReadLines("/proc/self/status"))
+                {
+                    if (!line.StartsWith("Uid:", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    var parts = line.Split(new[] { '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length >= 2 && int.TryParse(parts[1], out var uid))
+                    {
+                        return uid == 0;
+                    }
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryResolveExecutable(string fileName, out string executablePath)
+    {
+        executablePath = string.Empty;
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return false;
+        }
+
+        if (File.Exists(fileName))
+        {
+            executablePath = fileName;
+            return true;
+        }
+
+        var pathValue = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+        foreach (var directory in pathValue.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var candidate = Path.Combine(directory, fileName);
+            if (File.Exists(candidate))
+            {
+                executablePath = candidate;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static async Task<bool> PromptForUpdateAsync(LoadingWindow loadingWindow)
