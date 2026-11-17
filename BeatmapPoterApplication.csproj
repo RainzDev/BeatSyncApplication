@@ -5,6 +5,12 @@
     <Nullable>enable</Nullable>
     <AssemblyName>BeatSync</AssemblyName>
     <RootNamespace>BeatSync</RootNamespace>
+    <Version>0.2.6</Version>
+    <AssemblyVersion>0.2.6.0</AssemblyVersion>
+    <FileVersion>0.2.6.0</FileVersion>
+    <InformationalVersion>0.2.6</InformationalVersion>
+    <Product>BeatSync</Product>
+    <Company>RainzDev</Company>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\logo.ico</ApplicationIcon>
   </PropertyGroup>
