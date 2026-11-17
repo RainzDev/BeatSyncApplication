@@ -3,10 +3,12 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -28,6 +30,11 @@ public partial class App : Application
 
     // set to true to force the update prompt during local testing without publishing a new release.
     private static bool ForceUpdatePromptForTesting = false;
+
+    private const string LatestReleaseEndpoint = "https://api.github.com/repos/RainzDev/BeatSyncApplication/releases/latest";
+    private const string ReleaseListEndpoint = "https://api.github.com/repos/RainzDev/BeatSyncApplication/releases?per_page=8";
+
+    private static readonly HttpClient UpdateHttpClient = CreateUpdateHttpClient();
 
     private static void Log(string message)
     {
@@ -76,12 +83,8 @@ public partial class App : Application
                 if (updateStatus == UpdateStatus.Failed)
                 {
                     Log($"Update check failed with status {updateStatus}.");
-                    Dispatcher.UIThread.Post(() =>
-                    {
-                        loadingWindow.Close();
-                        desktop.Shutdown();
-                    });
-                    return;
+                    loadingWindow.SetStatus("Could not check for updates. Starting app...");
+                    await Task.Delay(900);
                 }
 
                 if (updateStatus == UpdateStatus.UpdateAvailable)
@@ -173,8 +176,9 @@ public partial class App : Application
 
             if (attempt < maxAttempts)
             {
-                loadingWindow.SetStatus("Could not reach GitHub. Retrying in 15 seconds...");
-                await Task.Delay(TimeSpan.FromSeconds(15));
+                var retryDelay = GetStartupRetryDelay(attempt);
+                loadingWindow.SetStatus($"Could not reach GitHub. Retrying in {retryDelay.TotalSeconds:0} seconds...");
+                await Task.Delay(retryDelay);
             }
         }
 
@@ -185,18 +189,13 @@ public partial class App : Application
 
     private static async Task<UpdateStatus> TryCheckForUpdatesAsync(LoadingWindow loadingWindow)
     {
-        using var client = new HttpClient();
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("BeatSyncApplication/1.0");
-        client.Timeout = TimeSpan.FromSeconds(20);
-
-        using var response = await client.GetAsync("https://api.github.com/repos/RainzDev/BeatSyncApplication/releases/latest");
-        if (!response.IsSuccessStatusCode)
+        var json = await TryGetLatestReleaseJsonAsync(UpdateHttpClient);
+        if (string.IsNullOrWhiteSpace(json))
         {
-            Log($"GitHub latest release request failed: {(int)response.StatusCode} {response.ReasonPhrase}.");
+            Log("Unable to fetch release metadata from GitHub after retries.");
             return UpdateStatus.Failed;
         }
 
-        var json = await response.Content.ReadAsStringAsync();
         Log("GitHub release metadata received.");
         using var document = JsonDocument.Parse(json);
         if (!TryValidateReleaseMetadata(document.RootElement, out var validationMessage))
@@ -258,7 +257,14 @@ public partial class App : Application
             return UpdateStatus.Failed;
         }
 
-        var manifestJson = await client.GetStringAsync(manifestUrl);
+        var manifestJson = await TryGetStringWithRetriesAsync(UpdateHttpClient, manifestUrl, "release manifest");
+        if (string.IsNullOrWhiteSpace(manifestJson))
+        {
+            loadingWindow.SetStatus("Could not download release manifest. Update aborted for safety.");
+            await Task.Delay(1200);
+            return UpdateStatus.Failed;
+        }
+
         if (!TryValidateReleaseManifest(manifestJson, releaseTag, assetName, out var expectedManifestAssetHash, out var manifestValidationMessage))
         {
             loadingWindow.SetStatus(manifestValidationMessage);
@@ -266,7 +272,14 @@ public partial class App : Application
             return UpdateStatus.Failed;
         }
 
-        var zipBytes = await client.GetByteArrayAsync(assetUrl);
+        var zipBytes = await TryGetByteArrayWithRetriesAsync(UpdateHttpClient, assetUrl, "release archive");
+        if (zipBytes is null || zipBytes.Length == 0)
+        {
+            loadingWindow.SetStatus("Could not download update package. Please try again later.");
+            await Task.Delay(1200);
+            return UpdateStatus.Failed;
+        }
+
         using var zipHashStream = new MemoryStream(zipBytes, writable: false);
         var downloadedZipHash = ComputeSha256(zipHashStream);
 
@@ -317,17 +330,12 @@ public partial class App : Application
     {
         loadingWindow.SetStatus("Updating BeatSync...");
 
-        using var client = new HttpClient();
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("BeatSyncApplication/1.0");
-        client.Timeout = TimeSpan.FromSeconds(30);
-
-        using var releaseResponse = await client.GetAsync("https://api.github.com/repos/RainzDev/BeatSyncApplication/releases/latest");
-        if (!releaseResponse.IsSuccessStatusCode)
+        var releaseJson = await TryGetLatestReleaseJsonAsync(UpdateHttpClient);
+        if (string.IsNullOrWhiteSpace(releaseJson))
         {
-            throw new InvalidOperationException("Failed to fetch latest release metadata.");
+            throw new InvalidOperationException("Failed to fetch latest release metadata after retries.");
         }
 
-        var releaseJson = await releaseResponse.Content.ReadAsStringAsync();
         using var releaseDocument = JsonDocument.Parse(releaseJson);
         if (!TryValidateReleaseMetadata(releaseDocument.RootElement, out var validationMessage))
         {
@@ -376,13 +384,23 @@ public partial class App : Application
             throw new InvalidOperationException("Release asset name missing.");
         }
 
-        var manifestJson = await client.GetStringAsync(manifestUrl);
+        var manifestJson = await TryGetStringWithRetriesAsync(UpdateHttpClient, manifestUrl, "release manifest");
+        if (string.IsNullOrWhiteSpace(manifestJson))
+        {
+            throw new InvalidOperationException("Failed to download release manifest.");
+        }
+
         if (!TryValidateReleaseManifest(manifestJson, releaseTag, assetName, out var expectedManifestAssetHash, out var manifestValidationMessage))
         {
             throw new InvalidOperationException(manifestValidationMessage);
         }
 
-        var zipBytes = await client.GetByteArrayAsync(assetUrl);
+        var zipBytes = await TryGetByteArrayWithRetriesAsync(UpdateHttpClient, assetUrl, "release archive");
+        if (zipBytes is null || zipBytes.Length == 0)
+        {
+            throw new InvalidOperationException("Failed to download update package.");
+        }
+
         using var zipHashStream = new MemoryStream(zipBytes, writable: false);
         var downloadedZipHash = ComputeSha256(zipHashStream);
         if (!string.Equals(downloadedZipHash, expectedManifestAssetHash, StringComparison.OrdinalIgnoreCase))
@@ -747,6 +765,164 @@ public partial class App : Application
         }
 
         return true;
+    }
+
+    private static HttpClient CreateUpdateHttpClient()
+    {
+        var handler = new SocketsHttpHandler
+        {
+            AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
+            PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+            ConnectTimeout = TimeSpan.FromSeconds(12),
+        };
+
+        var client = new HttpClient(handler)
+        {
+            Timeout = TimeSpan.FromSeconds(30),
+        };
+
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("BeatSyncApplication/1.0");
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+        return client;
+    }
+
+    private static TimeSpan GetStartupRetryDelay(int attempt)
+    {
+        var seconds = Math.Min(30, Math.Pow(2, attempt + 1));
+        var jitter = Random.Shared.NextDouble() * 2.5;
+        return TimeSpan.FromSeconds(seconds + jitter);
+    }
+
+    private static bool IsTransientStatusCode(HttpStatusCode statusCode)
+    {
+        return statusCode == HttpStatusCode.RequestTimeout ||
+               statusCode == HttpStatusCode.TooManyRequests ||
+               (int)statusCode >= 500;
+    }
+
+    private static async Task<string?> TryGetLatestReleaseJsonAsync(HttpClient client)
+    {
+        var latestJson = await TryGetStringWithRetriesAsync(client, LatestReleaseEndpoint, "latest release metadata");
+        if (!string.IsNullOrWhiteSpace(latestJson))
+        {
+            return latestJson;
+        }
+
+        Log("Falling back to release list endpoint to resolve latest stable release metadata.");
+        var releasesJson = await TryGetStringWithRetriesAsync(client, ReleaseListEndpoint, "release list metadata");
+        if (string.IsNullOrWhiteSpace(releasesJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var releasesDocument = JsonDocument.Parse(releasesJson);
+            if (releasesDocument.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            foreach (var release in releasesDocument.RootElement.EnumerateArray())
+            {
+                if (release.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                var isDraft = release.TryGetProperty("draft", out var draftElement) && draftElement.ValueKind == JsonValueKind.True;
+                var isPrerelease = release.TryGetProperty("prerelease", out var prereleaseElement) && prereleaseElement.ValueKind == JsonValueKind.True;
+
+                if (isDraft || isPrerelease)
+                {
+                    continue;
+                }
+
+                return release.GetRawText();
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"Failed parsing fallback release list metadata: {ex.Message}");
+        }
+
+        return null;
+    }
+
+    private static async Task<string?> TryGetStringWithRetriesAsync(HttpClient client, string url, string operationName)
+    {
+        using var response = await TryGetResponseWithRetriesAsync(client, url, operationName);
+        if (response is null)
+        {
+            return null;
+        }
+
+        return await response.Content.ReadAsStringAsync();
+    }
+
+    private static async Task<byte[]?> TryGetByteArrayWithRetriesAsync(HttpClient client, string url, string operationName)
+    {
+        using var response = await TryGetResponseWithRetriesAsync(client, url, operationName);
+        if (response is null)
+        {
+            return null;
+        }
+
+        return await response.Content.ReadAsByteArrayAsync();
+    }
+
+    private static async Task<HttpResponseMessage?> TryGetResponseWithRetriesAsync(HttpClient client, string url, string operationName)
+    {
+        const int maxAttempts = 4;
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    return response;
+                }
+
+                if (!IsTransientStatusCode(response.StatusCode) || attempt == maxAttempts)
+                {
+                    Log($"{operationName} request failed: {(int)response.StatusCode} {response.ReasonPhrase}.");
+                    response.Dispose();
+                    return null;
+                }
+
+                Log($"{operationName} transient HTTP {(int)response.StatusCode} on attempt {attempt}/{maxAttempts}. Retrying...");
+                response.Dispose();
+            }
+            catch (TaskCanceledException ex)
+            {
+                if (attempt == maxAttempts)
+                {
+                    Log($"{operationName} timed out after {maxAttempts} attempts: {ex.Message}");
+                    return null;
+                }
+
+                Log($"{operationName} timed out on attempt {attempt}/{maxAttempts}. Retrying...");
+            }
+            catch (HttpRequestException ex)
+            {
+                if (attempt == maxAttempts)
+                {
+                    Log($"{operationName} network error after {maxAttempts} attempts: {ex.Message}");
+                    return null;
+                }
+
+                Log($"{operationName} network error on attempt {attempt}/{maxAttempts}: {ex.Message}. Retrying...");
+            }
+
+            var delaySeconds = Math.Pow(2, attempt - 1) + Random.Shared.NextDouble();
+            await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
+        }
+
+        return null;
     }
 
     private static string CreateRestartUpdater(string targetBinary, string replacementRoot, string binaryName)
