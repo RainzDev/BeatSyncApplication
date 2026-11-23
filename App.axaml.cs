@@ -958,13 +958,15 @@ public partial class App : Application
         var cleanupDirectory = string.IsNullOrWhiteSpace(scriptDirectory)
             ? Path.GetDirectoryName(targetBinary) ?? Directory.GetCurrentDirectory()
             : scriptDirectory;
+        var processName = Path.GetFileNameWithoutExtension(binaryName);
 
         return $"#!/bin/bash\n" +
                $"sleep 2\n" +
                $"TARGET=\"{targetBinary}\"\n" +
                $"APP_DIR=\"{appDirectory}\"\n" +
                $"STAGED_DIR=\"{replacementRoot}\"\n" +
-               $"while pgrep -f \"{binaryName}\" >/dev/null 2>&1; do sleep 2; done\n" +
+               $"PROCESS_NAME=\"{processName}\"\n" +
+               $"while pgrep -x \"$PROCESS_NAME\" >/dev/null 2>&1; do sleep 2; done\n" +
                $"mkdir -p \"$APP_DIR\"\n" +
                $"cp -a \"$STAGED_DIR\"/. \"$APP_DIR\"/\n" +
                $"chmod +x \"$TARGET\"\n" +
